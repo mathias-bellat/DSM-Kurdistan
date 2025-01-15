@@ -1,0 +1,105 @@
+// JavaScript code to be implemented in Google Earth Engine(c) developed by M.Bellat to
+// accompany the paper: 
+
+// Bellat, M.; Glissman, B.; Rensthscler, T.; Sconzo, P.; Kakhani, N.; Kohsravani, P.; Brifkany, B.; Pfälzner, P.
+//  and Scholten, T., 2025. 'Soil properties in northern Kurdistan region, Dohuk province (Iraq)'
+// submitted to ????.
+
+// and the collection of data: ???
+//
+//                ------------- ooo -------------
+
+// TO EXECUTE THE ALGORITHM PASTE THIS CODE INTO GOOGLE EARTH ENGINE CODE EDITOR AND PRESS 'Run'
+
+//                ------------- ooo -------------
+
+// For more information on how this code works and how to apply it refer to the text of the article and
+// the supplementary material on ?????
+// Suggestions and code improvements are welcome. Please, contact M.Bellat mathias.bellat@uni-tuebingen.de
+
+////////////////////////////////////////////////////////////////////////////
+//                ------------- ooo -------------
+////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
+// 1. Import and prepared Data
+/////////////////////////////////////////////////////////////////////////////////////
+
+//import the boundary (here import the Area of Interest)
+var roi = ee.FeatureCollection("users/mathiasbellat/Mask");
+Map.addLayer(roi, null,'boundary')
+
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+
+  // Bits 10 and 11 are clouds and cirrus, respectively.
+  var cloudBitMask = 1 << 10;
+  var cirrusBitMask = 1 << 11;
+
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0));
+
+  return image.updateMask(mask).divide(10000);
+}
+
+// Map the function over a month of data and take the median.
+// Load Sentinel-2 TOA reflectance data (adjusted for processing changes
+// that occurred after 2022-01-25).
+var dataset = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterDate('2021-01-01', '2022-01-31')
+                  // Pre-filter to get less cloudy granules.
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+                  .map(maskS2clouds);
+
+var rgbVis = {
+  min: 0.0,
+  max: 0.3,
+  bands: ['B4', 'B3', 'B2'],
+};
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2. Prepare Sentinel Composite Layers
+/////////////////////////////////////////////////////////////////////////////////////
+
+// **** User Editable Variables **** //
+var year = 2021; // Start year for composite
+var startJulian = 100; // Starting Julian Date
+var endJulian = 272; // Ending Julian date
+var compositingPeriod = 0; // Number of years into the future to include
+var compositeArea = roi.geometry().bounds(); // ROI shapefile/asset or polygon
+var roiName = 'Dohuk_Iraq'; // Give the study area a descriptive name.
+var exportToDrive = 'no'; // Option to export landsat composite to drive
+var crs = 'EPSG:32638'; // EPSG number for output projection. For more info- http://spatialreference.org/ref/epsg/    
+var myscale = 25; //outputscale
+
+// Display the map
+
+Map.addLayer(dataset.median(), rgbVis, 'RGB');
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 3. Export
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+var medianComposite = dataset.median();
+
+var bands = (['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8', 'B9', 'B11', 'B12']);
+
+
+// Loop through each band to export
+bands.forEach(function(band) {
+    var bandImage = medianComposite.select([band]);
+    Export.image.toDrive({
+        image: bandImage,
+        description: 'Sentinel2_' + band + '_2021_MedianComposite',
+        scale: 25,
+        region: roi,
+        folder: 'GoogleEarthEngine',
+        maxPixels: 1e13
+    });
+});
+
+
+

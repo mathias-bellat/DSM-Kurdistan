@@ -1,0 +1,70 @@
+// JavaScript code to be implemented in Google Earth Engine(c) developed by M.Bellat to
+// accompany the paper: 
+
+// Bellat, M.; Glissman, B.; Rensthscler, T.; Sconzo, P.; Kakhani, N.; Kohsravani, P.; Brifkany, B.; Pfälzner, P.
+//  and Scholten, T., 2025. 'Soil properties in northern Kurdistan region, Dohuk province (Iraq)'
+//                ------------- ooo -------------
+
+// TO EXECUTE THE ALGORITHM PASTE THIS CODE INTO GOOGLE EARTH ENGINE CODE EDITOR AND PRESS 'Run'
+
+//                ------------- ooo -------------
+
+// For more information on how this code works and how to apply it refer to the text of the article and
+// the supplementary material on ?????
+// Suggestions and code improvements are welcome. Please, contact M.Bellat mathias.bellat@uni-tuebingen.de
+
+////////////////////////////////////////////////////////////////////////////
+//                ------------- ooo -------------
+////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
+// 1. Import and prepared Data
+/////////////////////////////////////////////////////////////////////////////////////
+
+//import the boundary (here import the Area of Interest)
+var roi = ee.FeatureCollection("users/mathiasbellat/Mask");
+Map.addLayer(roi, {}, 'area');
+Map.centerObject(roi, 6);
+
+
+// Define the start and end date (repeat for each year from 2012 until 2016)
+// For the prediods it is February - Mars; April - May;  Jun - July and October - November
+var startDate = '2016-10-01';
+var endDate = '2016-11-30';
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2. Prepare Suomi NPP Land Surface Temperature band 
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+// Load VNP21A1D data
+var collection = ee.ImageCollection("NOAA/VIIRS/001/VNP21A1D")
+                  .filterBounds(roi)
+                  .filterDate(startDate, endDate);
+
+
+// Select the LST band
+var lst = collection.select('LST_1KM');
+
+// Calculate the mean surface temperature
+var meanTemperature = lst.mean();
+
+// Display the mean temperature
+Map.addLayer(meanTemperature, {min: 273, max: 320, palette: ['blue', 'green', 'red']}, 'Mean Surface Temperature');
+Map.centerObject(roi, 10);
+
+// Print the mean temperature
+print("Mean Daytime Land Surface Temperature:", meanTemperature);
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 3. Export
+/////////////////////////////////////////////////////////////////////////////////////
+
+// Export the mean PET image to Google Drive
+Export.image.toDrive({
+  image: meanTemperature,
+  description: 'mean_LST_2016_Oct_Nov', // Change the name according to the year and season
+  folder: 'GoogleEarthEngine', // Specify your Google Drive folder
+  region: roi,
+  scale: 1000, // Adjust the scale according to your needs
+  maxPixels: 1e13
+});

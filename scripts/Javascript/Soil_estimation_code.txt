@@ -1,0 +1,462 @@
+// JavaScript code to be implemented in Google Earth Engine(c) developed by N. Kakhani to
+// accompany the paper: 
+
+// Bellat, M.; Glissman, B.; Rensthscler, T.; Sconzo, P.; Kakhani, N.; Kohsravani, P.; Brifkany, B.; Pfälzner, P.
+//  and Scholten, T., 2025. 'Soil properties in northern Kurdistan region, Dohuk province (Iraq)'
+// submitted to ????.
+
+// and the collection of data: ???
+//
+//                ------------- ooo -------------
+
+// TO EXECUTE THE ALGORITHM PASTE THIS CODE INTO GOOGLE EARTH ENGINE CODE EDITOR AND PRESS 'Run'
+
+//                ------------- ooo -------------
+
+// For more information on how this code works and how to apply it refer to the text of the article and
+// the supplementary material on ?????
+// Suggestions and code improvements are welcome. Please, contact N. Kakhani at nkakhani@gmail.com
+
+////////////////////////////////////////////////////////////////////////////
+//                ------------- ooo -------------
+////////////////////////////////////////////////////////////////////////////
+
+//var  = ee.ImageCollection("OREGONSTATE/PRISM/AN81d");
+var prism = ee.ImageCollection("ECMWF/ERA5/DAILY");  //PRISM is not available globaly, so we replace it with era5
+
+////////////////////////////////////////////////////////////////////////////
+              // ***** LOAD LANDSAT COMPOSITE ***** //
+////////////////////////////////////////////////////////////////////////////
+
+function getComp(compositeArea, year, compositingPeriod, startJulian, endJulian, exportToDrive, roiName, crs) {
+  // **** USER EDITABLE VARIABLES **** //
+  //Composite parameters
+  var buffer_distance = 1; // Distance to buffer composite area in meters. Must be > 0.
+  var cloudThresh = 20; // Specify cloud threshold (0-100)- lower number masks out more clouds
+  var possibleSensors = ['L5','L7','L8']; // Specify which sensors to pull from- supports L5,L7, and L8
+  var reducerPercentile = 50; // Reducer for compositing
+
+  //////////////////////////////////////////////////////
+  //Globals
+  //////////////////////////////////////////////////////
+  // Establish composite area based on input geometry.
+  var reducer = ee.Reducer.percentile([reducerPercentile]); // Reducer for compositing
+  var prioritizeL5 = false; // Binary true or false for prioritizing L5, L8, then L7 in compositing
+  var studyArea = compositeArea.buffer(buffer_distance);
+  //studyArea = studyArea.buffer(buffer_distance);
+  var fB=studyArea;
+  Map.centerObject(studyArea);
+  //////////////////////////////////////////////////////
+  //Use data mask from Hansen's Global Forest Change as a water mask
+  var forestChangeImage = ee.Image('UMD/hansen/global_forest_change_2019_v1_7');
+  var mskW = forestChangeImage.select(['datamask']);
+  //var mskW = mskW.eq(1);
+  // Run a focal_mode convolution on the image. 
+  var maskFocalMode = mskW.focal_mode();
+  // Further smooth the image via focal_max
+  var watermask = maskFocalMode.focal_max(5, "square", "pixels", 5 );
+  //////////////////////////////////////////////////////
+  //Names of collections to look in
+  //Add _L1T for L1T imagery
+  //TOA is computed on both the L1G or L1T
+  var collection_dict = {
+                           L8: "LANDSAT/LC08/C01/T1_TOA",// previously 'LC8',
+                           L7: "LANDSAT/LE07/C01/T1_TOA",//previously 'LE7',
+                           L5: "LANDSAT/LT05/C01/T1_TOA",//'LT5',
+                           L4: "LANDSAT/LT04/C01/T1_TOA",//'LT4'
+    };
+  
+  //////////////////////////////////////////////////////
+  //Band combinations for each sensor corresponding to final selected corresponding bands                        
+  var sensor_band_dict =ee.Dictionary({L8 : ee.List([1,2,3,4,5,9,6]),
+                          L7 : ee.List([0,1,2,3,4,5,7]),
+                          L5 : ee.List([0,1,2,3,4,5,6]),
+                          L4 : ee.List([0,1,2,3,4,5,6])
+    });
+  
+  
+  //////////////////////////////////////////////////////
+  var vizParamsFalse = {'min': 0.1,'max': [0.30,0.30,0.30],   'bands':'nir,swir1,red'};
+  var vizParamsTrue = {'min': 0.05, 'max': [3000, 4000, 4000],'bands': 'red,green,blue', 'gamma': 1.6};
+  
+  
+  ///////////////////////////////////////////////////////////////////////////////
+  // band names
+  var bandNames = ee.List(['blue','green','red','nir','swir1','temp','swir2']);
+  var STD_NAMES = ['blue','green','red','nir','swir1','temp','swir2'];
+  var bandNumbers = [0,1,2,3,4,5,6];
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //Function to mask clouds, ensure data exists in every band, and defringe images
+  //Assumes the image is a Landsat image
+  function maskCloudsAndSuch(img){
+      //Bust clouds
+      var cs = ee.Algorithms.Landsat.simpleCloudScore(img).select(['cloud']).gt(cloudThresh);
+      //Make sure all or no bands have data
+      var numberBandsHaveData = img.mask().reduce(ee.Reducer.sum());
+      var allOrNoBandsHaveData = numberBandsHaveData.eq(0).or(numberBandsHaveData.gte(7));
+      
+      //If it's Landsat 5- defringe by nibbling away at the fringes
+      var allBandsHaveData = allOrNoBandsHaveData;//.focal_min(1,'square','pixels',8)
+      
+      //Make sure no band is just under zero
+      var allBandsGT = img.reduce(ee.Reducer.min()).gt(-0.001);
+      return img.mask(img.mask().and(cs.not()).and(allBandsHaveData).and(allBandsGT));
+    }
+  //////////////////////////////////////////////////////////////////
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //Basic shadow masking using sum of specified bands
+  //Tends to include hill shadows and water
+    var shadowThresh = 0.1;
+    var shadowSumBands = ['nir','swir1','swir2'];
+    function maskShadows(img){
+      var ss = img.select(shadowSumBands).reduce(ee.Reducer.sum());
+      return img.mask(img.mask().and(ss.gt(shadowThresh)));
+    }
+  ////////////////////////////////////////////////////////
+  
+  //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+  //Function to handle empty collections that will cause subsequent processes to fail
+  //If the collection is empty, will fill it with an empty image
+  function fillEmptyCollections(inCollection,dummyImage){                       
+    var dummyCollection = ee.ImageCollection([dummyImage.mask(ee.Image(0))]);
+    var imageCount = inCollection.toList(1).length();
+    return ee.ImageCollection(ee.Algorithms.If(imageCount.gt(0),inCollection,dummyCollection));
+  
+  }
+  //////////////////////////////////////////////////////////////////////////
+  function getImage(year, compositingPeriod, startJulian, endJulian, exportToDrive, roiName){
+    
+    //Define dates
+    var y1Image = year;
+    var y2Image = year + compositingPeriod;
+    
+    //var roiName = roiName;
+    var startDate = ee.Date.fromYMD(ee.Number(year),1,1).advance(startJulian,'day');
+    var endDate = ee.Date.fromYMD(ee.Number(year).add(ee.Number(compositingPeriod)),1,1).advance(endJulian,'day');
+    print('Acquiring composite for',startDate,endDate);
+    
+    //Helper function to get images from a specified sensor
+   function getCollection(sensor,startDate,endDate,startJulian,endJulian){
+    var collectionName = collection_dict[sensor];
+    
+    //Start with an un-date-confined collection of iamges
+    var WOD = ee.ImageCollection(collectionName)
+            .filterBounds(fB)
+            
+    //Pop off an image to serve as a template if there are no images in the date range
+    var dummy = ee.Image(WOD.first());
+    
+    //Filter by the dates
+    var ls = WOD
+            .filterDate(startDate,endDate)
+            .filter(ee.Filter.calendarRange(startJulian,endJulian));
+    
+    //Fill the collection if it's empty
+    ls = fillEmptyCollections(ls,dummy);
+    
+    //Clean the collection up- clouds, fringes....
+    ls = ls.map(maskCloudsAndSuch)
+            .select(sensor_band_dict.get(sensor),bandNames)
+            .map(maskShadows);
+    return ls;
+   }
+    //Get the images for composite and shadow model
+    if(possibleSensors.indexOf('L5') >= 0){
+      var l5s = getCollection('L5',startDate,endDate,startJulian,endJulian);
+    }
+    else{var l5s = getCollection('L5',ee.Date('1000-01-01'),ee.Date('1001-01-01'),0,365)}
+    
+    if(possibleSensors.indexOf('L7') >= 0){
+      var l7s = getCollection('L7',startDate,endDate,startJulian,endJulian);
+    }
+    else{var l7s = getCollection('L7',ee.Date('1000-01-01'),ee.Date('1001-01-01'),0,365)}
+    
+    if(possibleSensors.indexOf('L8') >= 0){
+      var l8s = getCollection('L8',startDate,endDate,startJulian,endJulian);
+    }
+    else{var l8s = getCollection('L8',ee.Date('1000-01-01'),ee.Date('1001-01-01'),0,365)}
+    
+    //print('L8',y1Image,l8s);
+    //print('L7',y1Image,l7s);
+    
+    var ls = ee.ImageCollection(l5s.merge(l7s).merge(l8s));
+    var composite = ls.reduce(reducer).select(bandNumbers,bandNames).mask(watermask);
+    composite = composite.mask(composite.mask().and(watermask).clip(studyArea));
+    
+    //Get descriptive name
+    var fullName = roiName+'_'+y1Image.toString()+'_' +y2Image.toString()+'_'+startJulian.toString()+'_'+endJulian.toString()+'_Composite';
+    
+    //Set up our final composite with bands we'd like to include
+    var composite = composite.select(['blue','green','red','nir','swir1','swir2']).multiply(10000).int16().clip(fB);
+  
+  //////////////////////////////////////////////////////////////////////////////////
+  // Calculate visual params using min and max of image
+  
+  // get dictionary of min values for each band
+  var viz_min = (composite.reduceRegion({
+    reducer: ee.Reducer.min(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+  // get dictionary of max values for each band
+  var viz_max = (composite.reduceRegion({
+    reducer: ee.Reducer.max(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+
+  var vizParams = {'min': 0.5, 'max': [viz_max.getNumber('red').getInfo(), viz_max.getNumber('green').getInfo(), viz_max.getNumber('blue').getInfo()],'bands': 'red,green,blue', 'gamma': 1.6};
+  //Display as True color composite
+  //Map.addLayer(composite, vizParamsTrue, fullName);
+    
+    //////////////////////////////////////////////////////////////////////////////////
+    if(exportToDrive === 'yes'){
+      Export.image.toDrive(composite, fullName, "LandsatImageComposite", fullName, null, compositeArea.buffer(buffer_distance),30,crs,null);
+    }
+    
+    // Print final composite
+    print ("Landsat Composite:", composite); 
+    return composite;
+    
+  }
+  
+  var composite = getImage(year, compositingPeriod, startJulian, endJulian, exportToDrive, roiName);
+  //Map.addLayer(ee.Image().paint(studyArea,1,1),{'palette':'000000,FF0000'}, roiName);
+  return composite;
+}
+
+
+
+////////////////////////////////////////////////////////////////////////////
+                    // ***** LOAD SPECTRAL BANDS ***** //                       
+////////////////////////////////////////////////////////////////////////////
+function getNDVI(inImage) {
+  // Calculate NDVI = (nir - red) / (nir + red)
+  var ndvi = inImage.select("nir", "red").normalizedDifference().rename("ndvi");
+  // Add band to image
+  var outStack = inImage.addBands(ndvi);
+  
+  // Display composite NDVI 
+  var ndviParams = {min: -1, max: 1, palette: ['blue', 'white', 'green']};
+  //Map.addLayer(outStack.select("ndvi"), ndviParams, "NDVI");
+  
+  return outStack;
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2.2 Calculate mineral/geologic indices
+function getMineralIndices(inImage, crs){
+  
+  // Clay Minerals = swir1 / swir2
+  var clayIndex = inImage.select('swir1').divide(inImage.select('swir2')).rename('clayIndex');
+  
+  // Ferrous Minerals = swir / nir
+  var ferrousIndex = inImage.select('swir1').divide(inImage.select('nir')).rename('ferrousIndex');
+  
+  // Carbonate Index = (red - green) / (red + green)
+  var carbonateIndex = inImage.normalizedDifference(['red','green']).rename('carbonateIndex');
+
+  // Rock Outcrop Index = (swir1 - green) / (swir1 + green)
+  var rockOutcropIndex = inImage.normalizedDifference(['swir1','green']).rename('rockOutcropIndex');
+  
+  // Add bands
+  var outStack = inImage.addBands([clayIndex, ferrousIndex, carbonateIndex, rockOutcropIndex]);
+  
+  // if(mineralIndices.contains('clayIndex')){ 
+  //   composite = composite.addBands(clayIndex); 
+  // } else if(mineralIndices.contains('ferrousIndex')) {
+  //   composite = composite.addBands(ferrousIndex);
+  // } else if(mineralIndices.contains('carbonateIndex')) {
+  //   composite = composite.addBands(carbonateIndex);
+  // } else if(mineralIndices.contains('rockOutcropIndex')) {
+  //   composite = composite.addBands(rockOutcropIndex);
+  // }
+  
+  // Display mineral indices
+  //////////////////////////////////////////////////////////////////////////////////
+  // Calculate visual params using min and max of image
+  
+  // get dictionary of min values for each band
+  var Mineralviz_min = (outStack.reduceRegion({
+    reducer: ee.Reducer.min(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+  // get dictionary of max values for each band
+  var Mineralviz_max = (outStack.reduceRegion({
+    reducer: ee.Reducer.max(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+  // Add to map
+  // Map.addLayer(outStack.select("clayIndex"), {min: Mineralviz_min.getNumber('clayIndex').getInfo(), max: Mineralviz_max.getNumber('clayIndex').getInfo()}, "clayIndex");
+  // Map.addLayer(outStack.select("ferrousIndex"), {min: Mineralviz_min.getNumber('ferrousIndex').getInfo(), max: Mineralviz_max.getNumber('ferrousIndex').getInfo()}, "ferrousIndex");
+  // Map.addLayer(outStack.select("carbonateIndex"), {min: Mineralviz_min.getNumber('carbonateIndex').getInfo(), max: Mineralviz_max.getNumber('carbonateIndex').getInfo()}, "carbonateIndex");
+  // Map.addLayer(outStack.select("rockOutcropIndex"), {min: Mineralviz_min.getNumber('rockOutcropIndex').getInfo(), max: Mineralviz_max.getNumber('rockOutcropIndex').getInfo()}, "rockOutcropIndex");
+
+  
+  return outStack;
+}
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2.3 Tasseled cap image transformation 
+
+// Load required function from getImagesLib module 
+function getTC(inImage, crs){
+  // Load module that holds function
+  var getImages = require('users/nfskhn/GEE_DSM:getImageLib.js');
+  // Apply Tasseled cap transformation.
+  var TCall = getImages.getTasseledCap(inImage);
+  // Choose desired bands -- New composite will add 3 new layers: brightness, greenness, wetness
+  var TCBands = TCall.select("brightness", "greenness", "wetness");
+  // Stack onto Landsat image composite
+  var outStack = inImage.addBands(TCBands);
+  
+  // Visualize TC layers
+  //////////////////////////////////////////////////////////////////////////////////
+  // Calculate visual params using min and max of image
+  
+  // get dictionary of min values for each band
+  var TCviz_min = (outStack.reduceRegion({
+    reducer: ee.Reducer.min(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+  // get dictionary of max values for each band
+  var TCviz_max = (outStack.reduceRegion({
+    reducer: ee.Reducer.max(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+
+  // Map.addLayer(outStack.select("brightness"), {min: TCviz_min.getNumber('brightness').getInfo(), max: TCviz_max.getNumber('brightness').getInfo()}, "Tasseled Cap: Brightness");  
+  // Map.addLayer(outStack.select("greenness"), {min: TCviz_min.getNumber('greenness').getInfo(), max: TCviz_max.getNumber('greenness').getInfo()}, "Tasseled Cap: Greenness");  
+  // Map.addLayer(outStack.select("wetness"), {min: TCviz_min.getNumber('wetness').getInfo(), max: TCviz_max.getNumber('wetness').getInfo()}, "Tasseled Cap: Wetness");  
+   
+  return outStack;
+}
+
+// Function to calculate all spectral indices/image enhancement (NDVI, mineral, and tasseled cap transformation)
+function getSpectralIndices(inImage, crs){
+  var stackNDVI = getNDVI(inImage);
+  var stackNDVIMinerals = getMineralIndices(stackNDVI, crs);
+  var stackNDVIMineralsTC = getTC(stackNDVIMinerals, crs);
+  
+  return stackNDVIMineralsTC;
+}
+
+
+////////////////////////////////////////////////////////////////////////////
+                    // ***** LOAD TOPO DERIVS ***** //                       
+////////////////////////////////////////////////////////////////////////////
+
+function getTopo(inImage, crs){
+  
+  // Get boundary area of ROI 
+  var ROIBounds = inImage.geometry().bounds();
+  
+  ///IMPORTANT*****aspect layer will have holes where there is zero slope
+  //Module import
+  var getImagesLib = require('users/nfskhn/GEE_DSM:getImageLib.js');
+    
+  //set some params
+  var resolution = 10;
+  //var projection = 'EPSG:5070';//26912';
+  
+  
+  // Function to add USGS 1/3 arc second topography and derive slope, aspect, & hillshade
+  function addNEDTopography(){
+    // Import NED elevation data
+    //var elevation = ee.Image('USGS/NED'); only available for US 
+    var elevation = ee.Image("USGS/SRTMGL1_003"); //Global DEM
+    //print ("elev is:",elevation);
+    // Calculate slope and aspect
+    var topo = ee.Algorithms.Terrain(elevation);
+    //print (topo);
+    
+    //get % slope
+    var slopeDeg = topo.select(1)//.int16();
+    var slopeRads = slopeDeg.multiply(Math.PI).divide(ee.Number(180));
+    var slopeTan = slopeRads.tan();
+    var slopePCT = slopeTan.multiply(ee.Number(100)).rename('slopePCT');
+    
+    // Add 8-direction aspect
+    var aspect = topo.select('aspect');
+    var aspectRad = aspect.multiply(Math.PI).divide(180);
+    var aspectSin = aspectRad.sin().rename('sin');
+    //aspectSin = aspectSin.multiply(10000).int32()
+    var aspectCos = aspectRad.cos().rename('cos');
+    //aspectCos = aspectCos.multiply(10000).int32()
+    var aspect_8 = (aspect.multiply(8).divide(360)).add(1).floor().uint8().rename('aspect_8');
+    // Add 3 equally-spaced sun azimuth hillshades
+    var hill_1 = ee.Terrain.hillshade(elevation,30).rename('hill_1');
+    var hill_2 = ee.Terrain.hillshade(elevation,150).rename('hill_2');
+    var hill_3 = ee.Terrain.hillshade(elevation,270).rename('hill_3');
+    
+    //Add topography bands to image composite
+    topo = topo.float()
+    // topo = topo.clip(compositeArea)
+    topo = topo.select('elevation')
+      .addBands(slopePCT).addBands(aspectSin).addBands(aspectCos)
+      //.addBands(aspect_8).addBands(hill_1).addBands(hill_2).addBands(hill_3);
+    //topo = topo.int16();
+    
+    return topo
+  }
+  
+var topoBands = addNEDTopography().clip(ROIBounds);
+var outStack = inImage.addBands(topoBands);
+
+// Display topo derivatives
+//////////////////////////////////////////////////////////////////////////////////
+// Calculate visual params using min and max of image
+  
+  // get dictionary of min values for each band
+  var Topoviz_min = (outStack.reduceRegion({
+    reducer: ee.Reducer.min(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+  // get dictionary of max values for each band
+  var Topoviz_max = (outStack.reduceRegion({
+    reducer: ee.Reducer.max(),
+    scale: 10, 
+    crs: crs,
+    bestEffort: true,
+    tileScale: 16
+  }));
+  // Add to map
+  // Map.addLayer(outStack.select("elevation"), {min: Topoviz_min.getNumber('elevation').getInfo(), max: Topoviz_max.getNumber('elevation').getInfo()}, "Elevation"); 
+  // Map.addLayer(outStack.select("slopePCT"), {min: Topoviz_min.getNumber('slopePCT').getInfo(), max: Topoviz_max.getNumber('slopePCT').getInfo()}, "% Slope"); 
+  // Map.addLayer(outStack.select("sin"), {min: -1, max: 1}, "Aspect: sin"); 
+  // Map.addLayer(outStack.select("cos"), {min: -1, max: 1}, "Aspect: cos"); 
+
+//print("Predictor Layers", outStack);
+return outStack;
+  
+}
+
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////
+// EXPORTS
+exports.getComp = getComp;
+exports.getSpectralIndices = getSpectralIndices;
+exports.getTopo = getTopo;

@@ -1,0 +1,94 @@
+// JavaScript code to be implemented in Google Earth Engine(c) developed by M.Bellat to
+// accompany the paper: 
+
+// Bellat, M.; Glissman, B.; Rensthscler, T.; Sconzo, P.; Kakhani, N.; Kohsravani, P.; Brifkany, B.; Pfälzner, P.
+//  and Scholten, T., 2025. 'Soil properties in northern Kurdistan region, Dohuk province (Iraq)'
+// submitted to ????.
+
+// and the collection of data: ???
+//
+//                ------------- ooo -------------
+
+// TO EXECUTE THE ALGORITHM PASTE THIS CODE INTO GOOGLE EARTH ENGINE CODE EDITOR AND PRESS 'Run'
+
+//                ------------- ooo -------------
+
+// For more information on how this code works and how to apply it refer to the text of the article and
+// the supplementary material on ?????
+// Suggestions and code improvements are welcome. Please, contact M.Bellat mathias.bellat@uni-tuebingen.de
+
+////////////////////////////////////////////////////////////////////////////
+//                ------------- ooo -------------
+////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 1. Import and prepared Data
+/////////////////////////////////////////////////////////////////////////////////////
+
+//import the boundary (here import the Area of Interest)
+var roi = ee.FeatureCollection("users/Mask");
+Map.addLayer(roi, {}, 'area');
+Map.centerObject(roi, 6);
+
+// Define the start and end date over one year
+var startDate = '2020-01-01';
+var endDate = '2020-12-31';
+
+function maskS2clouds(image) {
+  // Get the pixel QA band.
+  var qa = image.select('QA_PIXEL');
+
+  // Bits 3 and 4 are cloud shadow and cloud, respectively and 14-15 cirrus.
+  var cloudShadowBitMask = 1 << 3;
+  var cloudBitMask = 1 << 4;
+  var cirrusBitMask = 1 << 14-15;
+
+
+  // Both flags should be set to zero, indicating clear conditions.
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+      .and(qa.bitwiseAnd(cirrusBitMask).eq(0))
+      .and(qa.bitwiseAnd(cloudShadowBitMask).eq(0));
+
+  return image.updateMask(mask).divide(10000);
+}
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2. Prepare Landsat Composite Layers
+/////////////////////////////////////////////////////////////////////////////////////
+
+var collection = ee.ImageCollection("LANDSAT/LC08/C02/T1_TOA")
+    .filterDate(startDate, endDate)
+    .filterBounds(roi)
+    .map(maskS2clouds);
+
+var composite = collection.median()
+
+var rgbVis = {
+  min: 0.0,
+  max: 0.3,
+  bands: ['B4', 'B3', 'B2'],
+};
+
+Map.addLayer(dataset.median(), rgbVis, 'RGB');
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 3. Export
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+var bands = (['B2', 'B3', 'B4', 'B5', 'B6', 'B7', 'B8']);
+
+// Loop through each band to export
+bands.forEach(function(band) {
+    var bandImage = composite.select([band]);
+    Export.image.toDrive({
+        image: bandImage,
+        description: 'Landsat8_' + band + '_2014_2022_MedianComposite',
+        scale: 30,
+        region: roi,
+        folder: 'GoogleEarthEngine',
+        maxPixels: 1e13
+    });
+});

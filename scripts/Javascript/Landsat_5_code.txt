@@ -1,0 +1,65 @@
+// JavaScript code to be implemented in Google Earth Engine(c) developed by M.Bellat to
+// accompany the paper: 
+
+// Bellat, M.; Glissman, B.; Rensthscler, T.; Sconzo, P.; Kakhani, N.; Kohsravani, P.; Brifkany, B.; Pfälzner, P.
+//  and Scholten, T., 2025. 'Soil properties in northern Kurdistan region, Dohuk province (Iraq)'
+//
+//                ------------- ooo -------------
+
+// TO EXECUTE THE ALGORITHM PASTE THIS CODE INTO GOOGLE EARTH ENGINE CODE EDITOR AND PRESS 'Run'
+
+//                ------------- ooo -------------
+
+// For more information on how this code works and how to apply it refer to the text of the article and
+// the supplementary material on ?????
+// Suggestions and code improvements are welcome. Please, contact M.Bellat mathias.bellat@uni-tuebingen.de
+
+////////////////////////////////////////////////////////////////////////////
+//                ------------- ooo -------------
+////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 1. Import and prepared Data
+/////////////////////////////////////////////////////////////////////////////////////
+
+//import the boundary (here import the Area of Interest)
+var roi = ee.FeatureCollection("users/Mask");
+Map.addLayer(roi, {}, 'area');
+Map.centerObject(roi, 6);
+
+
+// Define the start and end date from 1990 until 2010
+var startDate = '1990-01-01';
+var endDate = '2010-12-31';
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2. Prepare Sentinel Composite Layers
+/////////////////////////////////////////////////////////////////////////////////////
+
+var landsat5Collection = ee.ImageCollection("LANDSAT/LT05/C02/T1_TOA")
+    .filterDate(startDate, endDate)
+    .filterBounds(roi)
+    .filter(ee.Filter.lt('CLOUD_COVER', 20)); // Filter for less than 20% cloud cover
+    
+var medianComposite = landsat5Collection.median();
+
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 3. Export
+/////////////////////////////////////////////////////////////////////////////////////
+
+var bands = (['B2', 'B3', 'B4', 'B7']);
+
+// Loop through each band to export
+bands.forEach(function(band) {
+    var bandImage = medianComposite.select([band]);
+    Export.image.toDrive({
+        image: bandImage,
+        description: 'Landsat5_' + band + '_1990_2010_MedianComposite',
+        scale: 30,
+        region: roi,
+        folder: 'GoogleEarthEngine',
+        maxPixels: 1e13
+    });
+});

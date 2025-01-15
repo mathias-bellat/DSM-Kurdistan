@@ -1,0 +1,95 @@
+// JavaScript code to be implemented in Google Earth Engine(c) developed by M.Bellat to
+// accompany the paper: 
+
+// Bellat, M.; Glissman, B.; Rensthscler, T.; Sconzo, P.; Kakhani, N.; Kohsravani, P.; Brifkany, B.; Pfälzner, P.
+//  and Scholten, T., 2025. 'Soil properties in northern Kurdistan region, Dohuk province (Iraq)'
+// submitted to ????.
+
+// and the collection of data: ???
+//
+//                ------------- ooo -------------
+
+// TO EXECUTE THE ALGORITHM PASTE THIS CODE INTO GOOGLE EARTH ENGINE CODE EDITOR AND PRESS 'Run'
+
+//                ------------- ooo -------------
+
+// For more information on how this code works and how to apply it refer to the text of the article and
+// the supplementary material on ?????
+// Suggestions and code improvements are welcome. Please, contact M.Bellat mathias.bellat@uni-tuebingen.de
+
+////////////////////////////////////////////////////////////////////////////
+//                ------------- ooo -------------
+////////////////////////////////////////////////////////////////////////////
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 1. Import and prepared Data
+/////////////////////////////////////////////////////////////////////////////////////
+var roi = ee.FeatureCollection("users/mathiasbellat/Mask");
+Map.addLayer(roi, {}, 'area');
+Map.centerObject(roi, 6);
+
+
+// Define the start and end date 2020
+var startDate = '2020-01-01';
+var endDate = '2021-01-01';
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 2. Prepare MODIS data and bands
+/////////////////////////////////////////////////////////////////////////////////////
+
+var modis = ee.ImageCollection("MODIS/061/MOD11A2")
+// var modis = ee.ImageCollection('MODIS/061/MOD09Q1')
+// var modis = ee.ImageCollection("MODIS/061/MOD13Q1")
+var modisFiltered = modis.filterDate(startDate, endDate).filterBounds(roi);
+
+
+var projection = 'EPSG:4326';
+var scale = 250;  
+
+// 'LST_Day_1km'
+var lstDay = modisFiltered.select('LST_Night_1km')
+  .map(function(image) {
+    return image.multiply(0.02).subtract(273.15).rename('LST_Celsius');  // Conversion K -> °C
+  });
+
+
+var lstDayMedian = lstDay.median();
+
+
+var redBand = modisFiltered.select('sur_refl_b01')
+  .median()
+  .reproject({crs: projection, scale: scale});
+
+// Sélectionner la bande NIR (B2), calculer la médiane et appliquer la projection
+var nirBand = modisFiltered.select('sur_refl_b02')
+  .median()
+  .reproject({crs: projection, scale: scale});
+
+var NDVIBand = modisFiltered.select('NDVI')
+  .median()
+  .reproject({crs: projection, scale: scale});
+
+var EVIBand = modisFiltered.select('EVI')
+  .median()
+  .reproject({crs: projection, scale: scale});
+
+
+
+// Centrer la carte sur la région d'intérêt
+Map.centerObject(roi, 8);
+Map.addLayer(lstDayMedian);
+
+/////////////////////////////////////////////////////////////////////////////////////
+// 3. Export
+/////////////////////////////////////////////////////////////////////////////////////
+
+// Export the mean PET image to Google Drive
+Export.image.toDrive({
+  image: lstDayMedian,
+  description: 'MODIS_LST_Night',
+  folder: 'GoogleEarthEngine', // Specify your Google Drive folder
+  region: roi,
+  crs: 'EPSG:4326',
+  scale: 250, // Adjust the scale according to your needs
+  maxPixels: 1e13
+});
