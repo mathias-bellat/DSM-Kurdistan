@@ -25,7 +25,7 @@ rm(list = ls(all.names = TRUE))
 # Load packages
 install.packages("pacman")        #Install and load the "pacman" package (allow easier download of packages)
 library(pacman)
-pacman::p_load(prospectr, simplerspec, remotes)    ### Install required packages
+pacman::p_load(prospectr, remotes, caret , dplyr, readr)    ### Install required packages
 remotes::install_github("philipp-baumann/simplerspec") #Install package from Baumann for spectral analysis
 library(simplerspec)
 
@@ -100,7 +100,7 @@ write.table(MIRspec_wn_remove, "./export/Interference_spectra.txt", dec = ".", s
 # 03 Convert into different spectra variation ----------------------------------
 
 # 3.1 Convert in Wavelength ####################################################
-
+MIRspec_wn <- anti_join(MIRspec_wn, MIRspec_wn_remove, by = names(MIRspec_wn))
 MIRspec_wl <- MIRspec_wn
 wn <- (1 / as.numeric(names(MIRspec_wn))) * 1e7
 wn <- round(wn, digits=0)
