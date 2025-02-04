@@ -5,7 +5,7 @@
 # Author: Mathias Bellat  and Pegah Khosravani                     #
 # Affiliation : Tubingen University                                #
 # Creation date : 09/10/2024                                       #
-# E-mail: mathias.bellat@uni-tubingen.de                           #
+# E-mail: mathias.bellat@uni-tuebingen.de                          #
 ####################################################################
 
 
