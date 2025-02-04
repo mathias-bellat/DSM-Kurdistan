@@ -5,7 +5,7 @@
 # Author: Mathias Bellat  and Pegah Khosravani                     #
 # Affiliation : Tubingen University                                #
 # Creation date : 09/10/2024                                       #
-# E-mail: mathias.bellat@uni-tubingen.de                           #
+# E-mail: mathias.bellat@uni-tuebingen.de                         #
 ####################################################################
 
 
@@ -28,7 +28,7 @@ install.packages("pacman")
 #Install and load the "pacman" package (allow easier download of packages)
 library(pacman)
 pacman::p_load(dplyr, tidyr,ggplot2, mapview, sf, sp, terra, raster,  corrplot, viridis, Boruta,  caret,
-               quantregForest, readr, rpart, Cubist, reshape2, usdm)
+               quantregForest, readr, rpart, Cubist, reshape2, usdm, soiltexture)
 
 # 0.3 Show session infos =======================================================
 
@@ -274,7 +274,7 @@ for (i in 1:length(df_cov)) {
 # on the running process.
 #===============================================================================
 
-x <- "0_10"
+x <- "70_100"
 depth <- names(SoilCov[x])
 
 # Basic statistics
@@ -295,12 +295,24 @@ NumCovLayer = 80 # define number of covariate layer after hot coding
 StartTargetCov = NumCovLayer + 1 # start column after all covariates
 NumDataCol= ncol(SoilCovMLCon) # number of column in all data set
 
+# 03.1 Transform the soiltexture and covariates ================================
+
+# Scale the covariates
 preproc <- preProcess(SoilCovMLCon[,1:NumCovLayer], method=c("range"))
 SoilCovMLConTrans <- predict(preproc, SoilCovMLCon[,1:NumCovLayer])
-SoilCovMLConTrans <- cbind(SoilCovMLConTrans, SoilCovMLCon[,c(StartTargetCov:NumDataCol)])
 
-# 03.1 Develop models ========================================================
+# Realise the PSF transformation
+texture_df <- SoilCovMLCon[,c((NumDataCol-3):(NumDataCol-1))]
+colnames(texture_df) <- c("SAND","SILT", "CLAY")
+texture_df <- TT.normalise.sum(texture_df, css.names =  c("SAND","SILT", "CLAY"))
+colnames(texture_df) <- colnames(SoilCovMLCon[,c((NumDataCol-3):(NumDataCol-1))])
+SoilCovMLCon[,-c((NumDataCol-3):(NumDataCol-1))] <- texture_df
+
+SoilCovMLConTrans <- cbind(SoilCovMLConTrans,  SoilCovMLCon[,c(StartTargetCov:NumDataCol)])
+
+# 03.2 Develop models ==========================================================
 FormulaMLCon  = list()
+
 for (i in 1:(NumDataCol - NumCovLayer)) { 
   FormulaMLCon[[i]] = as.formula(paste(names(SoilCovMLConTrans)[NumCovLayer+i]," ~ ",paste(names(SoilCovMLConTrans)[1:NumCovLayer],collapse="+")))
 }
@@ -381,13 +393,15 @@ end_time <- proc.time()
 print(end_time - start_time)
 print("QRF done")
 
-# 03.2 Combine models statistics ===============================================
+# 03.3 Combine models statistics ===============================================
 
 # Look at the primary results of ML
+
 ModelConList = list()
 for (i in 1:length(FormulaMLCon)) {  
   ModelConList[[i]] <- list(CART=FitRpartCon[[i]], Knn=FitKnnCon[[i]],SVM=FitSvrCon[[i]], Cubist=FitCubCon[[i]], QRF=FitQRaFCon[[i]])
 }
+
 
 ResultsModelCon = list()
 for (i in 1:length(ModelConList)) {
@@ -398,7 +412,6 @@ SummaryModelCon = list()
 for (i in 1:length(ResultsModelCon)) {
   SummaryModelCon[[i]] <- summary(ResultsModelCon[[i]])
 }
-
 
 # Scale the models 
 ScalesMolel <- list(x=list(relation="free"), y=list(relation="free"))
@@ -432,7 +445,7 @@ for (i in 1:length(Error1Con)) {
 write.csv(data.frame(ErrorIndex2Con), paste0("./export/preprocess/", depth,"/First_run_models_results_for_",depth,"_soil.csv"))
   
 
-# 03.3 Look at models covariates influences ====================================
+# 03.4 Look at models covariates influences ====================================
 
 ModelsPlots = list()
 for (i in 1:length(ModelConList)) {
