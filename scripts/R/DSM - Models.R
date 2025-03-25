@@ -28,7 +28,7 @@ install.packages("pacman")
 #Install and load the "pacman" package (allow easier download of packages)
 library(pacman)
 
-pacman::p_load(ggplot2, caret, patchwork, quantregForest, Cubist, caretEnsemble, readr, grid, gridExtra, dplyr)
+pacman::p_load(ggplot2, caret, patchwork, quantregForest, Cubist, caretEnsemble, readr, grid, gridExtra, dplyr, reshape2)
 
 # 0.3 Show session infos =======================================================
 
@@ -39,6 +39,7 @@ sessionInfo()
 # on the running process.
 # 04.1 Prepare data ============================================================
 depth <- "0_10"
+depth_name <- "0 - 10"
 load(file = paste0("./export/save/Selected_cov_",depth,".RData"))
 SoilCovML <- First_depth_preprocess$Selected_cov_boruta
 seed=1070
@@ -57,11 +58,18 @@ FormulaML[[i]] <- as.formula(paste(names(SoilCovMLBoruta)[StartTargetCov]," ~ ",
 Train_data <- list()
 Test_data <- list()
 
-for (i in 1:length(FormulaML)) { 
+# Prepare the split also for the PSF evaluation later
+for (i in (length(FormulaML) + 1):(length(FormulaML) + 3)) {
+  t <- i + 85 
+  SoilCovML[[i]] <- First_depth_preprocess$Cov[t]   
+}
+
+for (i in 1:(length(FormulaML)+3)) { 
   set.seed(seed)  
 split <- createDataPartition(SoilCovML[[i]][,length(SoilCovML[[i]])], p = 0.8, list = FALSE, times = 1)
 Train_data[[i]] <- SoilCovML[[i]][ split,]
 Test_data[[i]]  <- SoilCovML[[i]][-split,]
+
 }
 
 # 04.3 Define train control ====================================================
@@ -84,7 +92,6 @@ for (i in 1:length(FormulaML)) {
 end_time <- proc.time()
 print(end_time - start_time)
 print("CART done")
-
 
 #Knn
 FitKnnCon  = list()
@@ -126,7 +133,6 @@ end_time <- proc.time()
 print(end_time - start_time)
 print("Cubist done")
 
-
 # QRF
 FitQRaFCon  = list()
 start_time <- proc.time()
@@ -145,10 +151,11 @@ print("QRF done")
 # 04.5 Combine models statistics ===============================================
 
 # Look at the primary results of ML
-ModelList = list()
+ModelConList = list()
 for (i in 1:length(FormulaML)) {  
-  ModelList[[i]] <- list(CART=FitRpartCon[[i]], Knn=FitKnnCon[[i]],SVM=FitSvrCon[[i]], Cubist=FitCubCon[[i]], QRF=FitQRaFCon[[i]])
+  ModelConList[[i]] <- list(CART=FitRpartCon[[i]], Knn=FitKnnCon[[i]],SVM=FitSvrCon[[i]], Cubist=FitCubCon[[i]], QRF=FitQRaFCon[[i]])
 }
+
 
 # Look at the primary results of ML
 ResultsModelCon = list()
@@ -160,17 +167,17 @@ for (i in 1:length(ModelConList)) {
 
 # 04.6 Check the correlation between the models ================================
 
-for (i in 1:length(ModelConList)) {
+for(i in 1:length(ModelConList)) {
 png(paste0("./export/models/", depth,"/Correlation between the models of ", names(Train_data[[i]])[length(Train_data[[i]])], " for ", depth, " soil.png"),  
-    width = 1600, height = 1600)
-splom(ResultsModelCon[[i]])
+      width = 1600, height = 1600)
+  print(splom(ResultsModelCon[[i]]))
 dev.off()
 
 pdf(paste0("./export/models/", depth,"/Correlation between the models of ", names(Train_data[[i]])[length(Train_data[[i]])], " for ", depth, " soil.pdf"),    
-width = 15, height = 15, 
-bg = "white",          
-colormodel = "cmyk") 
-splom(ResultsModelCon[[i]])
+    width = 15, height = 15, 
+    bg = "white",          
+    colormodel = "cmyk") 
+print(splom(ResultsModelCon[[i]]))
 dev.off()
 }
 
@@ -180,7 +187,7 @@ dev.off()
 EnsembleModel <- list()
 set.seed(seed)
 for (i in 1:length(ModelConList)) {
-EnsembleModel[[i]] <- caretStack(ModelSecondList[[i]], 
+EnsembleModel[[i]] <- caretStack(ModelConList[[i]], 
                                  method="rf", 
                                  metric="RMSE", 
                                  trControl=TrainControl, 
@@ -188,7 +195,7 @@ EnsembleModel[[i]] <- caretStack(ModelSecondList[[i]],
 }
 
 # 05.2 Plot models best tunning ================================================
-for (i in 1:length(ModelConLisn)){ 
+for (i in 1:length(ModelConList)){ 
 gg1 <- plot(ModelConList[[i]]$CART, main = "CART tuning parameters")
 gg2 <- plot(ModelConList[[i]]$Knn, main = "Knn tuning parameters")
 gg3 <- plot(ModelConList[[i]]$SVM, main = "SVMr tuning parameters")
@@ -199,7 +206,7 @@ gg6 <- plot(EnsembleModel[[i]]$ens_model, main = "Ensemble tuning parameters")
 png(paste0("./export/models/", depth,"/Models_tuning_parameters_",names(Train_data[[i]])[length(Train_data[[i]])], "_for_",depth,"_soil.png"),    # File name
    width = 1900, height = 1200)
 grid.arrange(arrangeGrob(gg1, gg2, gg3, gg4, gg5, gg6, nrow = 2, ncol = 3),
-             top = textGrob(paste0("Models tuning parameters for ",names(Train_data[[i]])[length(Train_data[[i]])] ," at ", depth , " depth"), gp = gpar(fontsize = 16, fontface = "bold")))
+             top = textGrob(paste0("Models tuning parameters for ",names(Train_data[[i]])[length(Train_data[[i]])] ," at ", depth_name , " cm increment"), gp = gpar(fontsize = 16, fontface = "bold")))
 dev.off()
 
 pdf(paste0("./export/models/", depth,"/Models_tuning_parameters_",names(Train_data[[i]])[length(Train_data[[i]])], "_for_",depth,"_soil.pdf"),    # File name
@@ -207,7 +214,7 @@ pdf(paste0("./export/models/", depth,"/Models_tuning_parameters_",names(Train_da
     bg = "white",          
     colormodel = "cmyk") 
 grid.arrange(arrangeGrob(gg1, gg2, gg3, gg4, gg5, gg6, nrow = 2, ncol = 3),
-             top = textGrob(paste0("Models tuning parameters for ",names(Train_data[[i]])[length(Train_data[[i]])] ," at ", depth , " depth"), gp = gpar(fontsize = 16, fontface = "bold")))
+             top = textGrob(paste0("Models tuning parameters for ",names(Train_data[[i]])[length(Train_data[[i]])] ," at ", depth_name , " cm increment"), gp = gpar(fontsize = 16, fontface = "bold")))
 dev.off()
 }
 
@@ -233,7 +240,7 @@ for (i in 1:length(ModelSecondList)) {
 ScalesModel <- list(x=list(relation="free"), y=list(relation="free"))
 BwplotModelCon = list()
 for (i in 1:length(ResultsSecondList)){ 
-  BwplotModelCon[[i]] <- bwplot(ResultsSecondList[[i]], scales=ScalesModel, main = paste0("Boxplot of the different models for ",names(Train_data[[i]])[length(Train_data[[i]])], " at ", depth , " cm interval"))
+  BwplotModelCon[[i]] <- bwplot(ResultsSecondList[[i]], scales=ScalesModel, main = paste0("Boxplot of the different models for ",names(Train_data[[i]])[length(Train_data[[i]])], " at ", depth_name , " cm increment"))
   
   png(paste0("./export/models/", depth,"/Boxplot_final_model_",names(Train_data[[i]])[length(Train_data[[i]])], "_for_",depth,"_soil.png"),    
       width = 1600, height = 1300)
@@ -265,7 +272,7 @@ for (i in 1:length(Error1Con)) {
   colnames(ErrorIndexCon) <- c(paste("MAE",names(Train_data[[i]])[length(Train_data[[i]])]),
                                paste("RMSE",names(Train_data[[i]])[length(Train_data[[i]])]),
                                paste("R2",names(Train_data[[i]])[length(Train_data[[i]])]))
-  ErrorIndex2Con <- cbind(ErrorIndex2Con,ErrorIndexCon)
+  ErrorIndex2Con <- cbind(ErrorIndex2Con, ErrorIndexCon)
   rownames(ErrorIndex2Con) <- c(names(ModelSecondList[[1]]))
 }
 write.csv(data.frame(ErrorIndex2Con), paste0("./export/models/", depth,"/Models_results_for_",depth,"_soil.csv"))
@@ -305,7 +312,7 @@ for (i in 1:length(ModelSecondList)) {
   ModelsPlots[[i]] <- ggplot(AllVarImportanceLong, aes(x = reorder(Variable, Importance), y = Importance, fill = Model)) +
     geom_bar(stat = "identity", position = "dodge") +  
     coord_flip() +  
-    labs(title = paste0("Top 20 covariates influence accros all models of ", names(Train_data[[i]])[length(Train_data[[i]])], " for ", depth, " soil"), 
+    labs(title = paste0("Top 20 covariates influence accros all models of ", names(Train_data[[i]])[length(Train_data[[i]])], " for ", depth_name , " cm increment"), 
          x = "Covariates", 
          y = "Importance") +
     theme_minimal() +

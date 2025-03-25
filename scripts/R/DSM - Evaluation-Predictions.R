@@ -28,7 +28,7 @@ install.packages("pacman")
 #Install and load the "pacman" package (allow easier download of packages)
 library(pacman)
 
-pacman::p_load(ggplot2, DescTools, caret, grid, gridExtra, raster, readr, dplyr,terra, quantregForest, Cubist, caretEnsemble)
+pacman::p_load(ggplot2, DescTools, caret, grid, gridExtra, raster, readr, dplyr,terra, quantregForest, Cubist, caretEnsemble, compositions)
 
 
 # 0.3 Show session infos =======================================================
@@ -42,7 +42,6 @@ sessionInfo()
 depth <- "0_10"
 load(paste0("./export/save/Models_",depth,"_DSM.RData"))
 Evaluation <- First_depth_models
-
 
 # 06.2 Run the loop for predictions ============================================
 
@@ -60,8 +59,32 @@ for (i in 1:length(Evaluation$Models)) {
   model_preds[[i]][[6]]<- as.vector(predict(Evaluation$Models[[i]][[6]], Ensemble.pred))
 }
 
+# ALR transformation
+
+for (i in 10:12) {
+  model_preds[[i]] <- list()
+t <- i - 9
+  for (j in 1:length(model_preds[[9]])) {
+    x <- cbind(model_preds[[8]][[j]],model_preds[[9]][[j]])
+    y <- as.data.frame(alrInv(x))
+    colnames(y) <- c("Sand", "Silt", "Clay")
+    model_preds[[i]][[j]] <- 100*(y[[t]])
+  }
+
+y1 <- NA
+  for (j in 1:3) {
+    x <- cbind(Q1.Q3[[8]][,j],Q1.Q3[[9]][,j])
+    y <- as.data.frame(alrInv(x))
+    colnames(y) <- c("Sand", "Silt", "Clay")
+    y1 <- cbind(y1,100*(y[t]))
+  }
+y1 <- y1[,-1]
+colnames(y1) <- colnames(cbind(Q1.Q3[[8]]))
+Q1.Q3[[i]] <- data.frame(lapply(y1, as.double))
+}
+
 Metrics <- list()
-for (i in 1:length(model_preds)) {
+for (i in 1:9) {
 empty_matrix <- matrix(NA, nrow = 6, ncol = 5) 
 Final_stats <- data.frame(empty_matrix)
 colnames(Final_stats) <- c("RMSE", "R2", "MAE", "CCC", "PICP")
@@ -77,6 +100,23 @@ Final_stats[[5,5]] <- mean(PCIP)*100
 Metrics[[i]] <- Final_stats
 }
 
+# For ALR
+
+for (i in 10:12) {
+  empty_matrix <- matrix(NA, nrow = 6, ncol = 5) 
+  Final_stats <- data.frame(empty_matrix)
+  colnames(Final_stats) <- c("RMSE", "R2", "MAE", "CCC", "PICP")
+  row.names(Final_stats) <- c("CART", "Knn", "SVM", "Cubist", "QRF", "Ensemble")
+  for (j in 1:length(model_preds[[i]])) {
+    RMSE <- postResample(model_preds[[i]][[j]], Evaluation$Test_data[[i]])
+    ccc <- CCC(model_preds[[i]][[j]], Evaluation$Test_data[[i]])
+    PICP <- NA
+    Final_stats[j,] <- as.data.frame(t(c(RMSE, ccc$rho.c$est, PICP)))
+  }
+  PCIP <- (Evaluation$Test_data[[i]] >= Q1.Q3[[i]][,1]) & (Evaluation$Test_data[[i]] <= Q1.Q3[[i]][,3])  
+  Final_stats[[5,5]] <- mean(PCIP)*100
+  Metrics[[i]] <- Final_stats
+}
 
 
 MetricsDF <- data.frame(NaN)
@@ -97,13 +137,13 @@ write.csv(data.frame(MetricsDF), paste0("./export/evaluation/", depth,"/Models_m
 print(Metrics[[10]])
 
 # Selection on the best model based on the metrics. Mainly lowest RMSE but also an appreciation of the R2 and CCC if a gap was visible
-Selected_model <- data.frame(t(c("QRF","CART", "CART", "QRF", "CART", "QRF", "Knn", "QRF", "QRF",  "QRF")))
-b <- c("QRF","Cubist", "QRF", "QRF", "QRF", "Cubist", "Ensemble", "SVM", "Knn",  "CART") 
-c <- c("QRF","Ensemble", "Cubist", "Ensemble", "Knn", "Cubist", "Ensemble", "SVM", "QRF", "Knn")
-d <- c("QRF","SVM", "QRF", "SVM", "QRF", "Ensemble", "Knn", "SVM", "QRF",  "Cubist")
-e <- c("QRF","CART", "Cubist", "Ensemble", "Cubist", "SVM", "QRF", "QRF", "QRF",  "Ensemble")
+Selected_model <- data.frame(t(c("QRF","QRF", "QRF", "QRF", "Cubist", "SVM", "Knn", "QRF", "Ensemble")))
+b <- c("QRF","Ensemble", "QRF", "QRF", "QRF", "Cubist", "Cubist", "QRF", "Ensemble") 
+c <- c("QRF","QRF", "Knn", "Ensemble", "QRF", "QRF", "QRF", "QRF", "QRF")
+d <- c("QRF","SVM", "QRF", "QRF", "Cubist", "Cubist", "CART", "CART", "QRF")
+e <- c("Knn","Ensemble", "Ensemble", "CART", "Ensemble", "CART", "QRF", "Cubist", "QRF")
 Selected_model <- rbind(Selected_model, b, c, d, e)
-colnames(Selected_model) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "Sand", "Silt", "Clay",  "MWD")
+colnames(Selected_model) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "MWD", "alr.Sand", "alr.Silt")
 row.names(Selected_model) <- c("0_10", "10_30", "30_50", "50_70", "70_100")
 print(Selected_model)
 
@@ -190,7 +230,7 @@ for (t in 1:length(depth_list)) {
   start_time <- proc.time()
   raster_stack <- stack("./data/Stack_layers_DSM.tif")
   cov <- read.delim(paste0("./data/df_", depth,"_cov_DSM.csv"), sep = ",")
-  cov <- cov[2:81]
+  cov <- cov[2:86]
   cov[] <- lapply(cov , as.numeric)
   
 
@@ -240,12 +280,12 @@ rm(list = ls(all.names = TRUE))
 depth <- "0_10"
 load(paste0("./export/save/Models_",depth,"_DSM.RData"))
 raster_stack_normalised <- stack(paste0("./export/predictions_DSM/", depth,"/Stack_raster_normalised_",depth,"_DSM.tif"))
-selected_model <- read.delim("./export/evaluation/Final_models_selected.txt", sep =";")
+selected_model <- read.delim("./data/Final_models_selected.txt", sep =";")
 Prediction <- First_depth_models
 
 # 07.3 Prediction loop  ========================================================
 
-for (i in i:length(Prediction$Cov)){
+for (i in 1:(length(Prediction$Cov)-3)){
   variable <- names(Prediction$Cov[[i]][length(Prediction$Cov[[i]])])
   model <- selected_model[depth,variable]
   if(model != "Ensemble"){
@@ -340,33 +380,33 @@ for (i in i:length(Prediction$Cov)){
 
 # 07.4 Prediction of uncertainy  ===============================================
 
-for (i in i:length(Prediction$Cov)){
+for (i in 1:(length(Prediction$Cov)-3)){
   variable <- names(Prediction$Cov[[i]][length(Prediction$Cov[[i]])])
   model <- selected_model[depth,variable]
-
-uncertainty_raster <- raster_stack_normalised[[1]]
-uncertainty_raster <- writeStart(uncertainty_raster, paste0("./export/uncertainy_DSM/",depth,"/Uncertainty_QRF_",variable,"_for_",depth,"_soil.tif"), overwrite = TRUE)
-
-# Subset the stack, keeping only the desired layers
-block_info <- blockSize(raster_stack_normalised)
-names <- names(Prediction$Cov[[i]][1:length(Prediction$Cov[[i]])-1])
-raster_subset <- subset(raster_stack_normalised, names)
-
-# Loop through each block of the raster stack
-for (g in 1:block_info$n) {
-  start_time <- proc.time()
-  block <- getValuesBlock(raster_subset , row = block_info$row[g], nrows = block_info$nrows[g])
-  block <- as.data.frame(block)
   
-  # Process the block
-  predicted_block <- predict(Prediction$Models[[i]]$QRF$finalModel, newdata = block,  what = c(0.05, 0.5, 0.95))
+  uncertainty_raster <- raster_stack_normalised[[1]]
+  uncertainty_raster <- writeStart(uncertainty_raster, paste0("./export/uncertainty_DSM/",depth,"/Uncertainty_QRF_",variable,"_for_",depth,"_soil.tif"), overwrite = TRUE)
   
-  # Write the predicted block to the output raster
-  values <- (predicted_block[,3] - predicted_block[,1]) /predicted_block[,2]
-  uncertainty_raster <- writeValues(uncertainty_raster, values, block_info$row[g])
-  end_time <- proc.time()
-  cat(round((g/block_info$n)*100, 1),"% ", ((end_time[3] - start_time[3])*g)/60, " /", ((end_time[3] - start_time[3])*block_info$n/60), " min \n")
-}
-uncertainty_raster<- writeStop(uncertainty_raster)
-print(variable)
+  # Subset the stack, keeping only the desired layers
+  block_info <- blockSize(raster_stack_normalised)
+  names <- names(Prediction$Cov[[i]][1:length(Prediction$Cov[[i]])-1])
+  raster_subset <- subset(raster_stack_normalised, names)
+  
+  # Loop through each block of the raster stack
+  for (g in 1:block_info$n) {
+    start_time <- proc.time()
+    block <- getValuesBlock(raster_subset , row = block_info$row[g], nrows = block_info$nrows[g])
+    block <- as.data.frame(block)
+    
+    # Process the block
+    predicted_block <- predict(Prediction$Models[[i]]$QRF$finalModel, newdata = block,  what = c(0.05, 0.5, 0.95))
+    
+    # Write the predicted block to the output raster
+    values <- (predicted_block[,3] - predicted_block[,1]) /predicted_block[,2]
+    uncertainty_raster <- writeValues(uncertainty_raster, values, block_info$row[g])
+    end_time <- proc.time()
+    cat(round((g/block_info$n)*100, 1),"% ", ((end_time[3] - start_time[3])*g)/60, " /", ((end_time[3] - start_time[3])*block_info$n/60), " min \n")
+  }
+  uncertainty_raster<- writeStop(uncertainty_raster)
+  print(variable)
 }

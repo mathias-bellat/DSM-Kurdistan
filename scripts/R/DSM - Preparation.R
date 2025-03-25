@@ -28,7 +28,7 @@ install.packages("pacman")
 #Install and load the "pacman" package (allow easier download of packages)
 library(pacman)
 pacman::p_load(dplyr, tidyr,ggplot2, mapview, sf, sp, terra, raster,  corrplot, viridis, Boruta,  caret,
-               quantregForest, readr, rpart, Cubist, reshape2, usdm, soiltexture)
+               quantregForest, readr, rpart, Cubist, reshape2, usdm, soiltexture, compositions, patchwork)
 
 # 0.3 Show session infos =======================================================
 
@@ -122,30 +122,35 @@ Modis <- raster::stack(list.files("./data/MODIS/", full.names = TRUE))
 names(Modis)
 
 # RS Landsat 8
-Landsat$EVI <- 2.5 * ((Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_red_2020_Median)/(Landsat$Landsat8_NIR_2020_Median + (6*Landsat$Landsat8_red_2020_Median) - (7.5*Landsat$Landsat8_blue_2020_Median + 1)))
-Landsat$SAVI <- ((Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_red_2020_Median)/(Landsat$Landsat8_NIR_2020_Median + Landsat$Landsat8_red_2020_Median + 0.5)) * (1.5) #Enhanced Vegetation Index
-Landsat$NDMI <- (Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_SIR1_2020_Median)/(Landsat$Landsat8_NIR_2020_Median + Landsat$Landsat8_SIR1_2020_Median) # normilized difference moisture index
-Landsat$COSRI <- ((Landsat$Landsat8_blue_2020_Median - Landsat$Landsat8_green_2020_Median)/(Landsat$Landsat8_red_2020_Median + Landsat$Landsat8_NIR_2020_Median)) * (Landsat$Landsat8_NDVI_2020_Median)  # Combined Specteral Response Index
-Landsat$BrightnessIndex <- ((Landsat$Landsat8_NIR_2020_Median)^2 - (Landsat$Landsat8_red_2020_Median)^2) 
-Landsat$ClayIndex <- (Landsat$Landsat8_SIR1_2020_Median / Landsat$Landsat8_SIR2_2020_Median)
-Landsat$SalinityIndex <- (Landsat$Landsat8_red_2020_Median - Landsat$Landsat8_NIR_2020_Median)/(Landsat$Landsat8_green_2020_Median + Landsat$Landsat8_NIR_2020_Median)
-Landsat$CarbonateIndex <- (Landsat$Landsat8_red_2020_Median / Landsat$Landsat8_green_2020_Median)
-Landsat$GypsumIndex <- (Landsat$Landsat8_SIR1_2020_Median - Landsat$Landsat8_NIR_2020_Median)/(Landsat$Landsat8_SIR1_2020_Median + Landsat$Landsat8_NIR_2020_Median)
+Landsat$EVI <- 2.5 * ((Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_red_2020_Median)/((Landsat$Landsat8_NIR_2020_Median + 6 * Landsat$Landsat8_red_2020_Median) - (7.5*Landsat$Landsat8_blue_2020_Median) + 1))
+Landsat$SAVI <- 1.5 * ((Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_red_2020_Median) / (Landsat$Landsat8_NIR_2020_Median + Landsat$Landsat8_red_2020_Median + 0.5)) #Enhanced Vegetation Index
+Landsat$TVI <- sqrt(Landsat$Landsat8_NDVI_2020_Median + 0.5)
+Landsat$NDMI <- (Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_SWIR1_2020_Median)/(Landsat$Landsat8_NIR_2020_Median + Landsat$Landsat8_SWIR1_2020_Median) # normilized difference moisture index
+Landsat$COSRI <- Landsat$Landsat8_NDVI_2020_Median * ((Landsat$Landsat8_blue_2020_Median + Landsat$Landsat8_green_2020_Median)/(Landsat$Landsat8_red_2020_Median + Landsat$Landsat8_NIR_2020_Median))  # Combined Specteral Response Index
+Landsat$LSWI <- (Landsat$Landsat8_NIR_2020_Median - Landsat$Landsat8_SWIR1_2020_Median) / (Landsat$Landsat8_NIR_2020_Median + Landsat$Landsat8_SWIR1_2020_Median)
+Landsat$BrightnessIndex <- sqrt((Landsat$Landsat8_red_2020_Median^2) + (Landsat$Landsat8_NIR_2020_Median^2))
+Landsat$ClayIndex <- Landsat$Landsat8_SWIR1_2020_Median / Landsat$Landsat8_SWIR2_2020_Median
+Landsat$SalinityIndex <- (Landsat$Landsat8_SWIR1_2020_Median - Landsat$Landsat8_SWIR2_2020_Median) / (Landsat$Landsat8_SWIR1_2020_Median - Landsat$Landsat8_NIR_2020_Median)
+Landsat$CarbonateIndex <- Landsat$Landsat8_red_2020_Median / Landsat$Landsat8_green_2020_Median
+Landsat$GypsumIndex <- (Landsat$Landsat8_SWIR1_2020_Median - Landsat$Landsat8_SWIR2_2020_Median) / (Landsat$Landsat8_SWIR1_2020_Median + Landsat$Landsat8_SWIR2_2020_Median)
 
 # RS Sentinel 2
-Sentinel$EVI <- ((Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_red_2021_MedianComposite)/((Sentinel$Sentinel2_NIR_2021_MedianComposite + 6 * Sentinel$Sentinel2_red_2021_MedianComposite) - (7.5 * Sentinel$Sentinel2_blue_2021_MedianComposite + 1))) * 2.5   
-Sentinel$TVI <- ((((Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_red_2021_MedianComposite)/(Sentinel$Sentinel2_NIR_2021_MedianComposite + Sentinel$Sentinel2_red_2021_MedianComposite)) + 0.5) ^ 0.5) *100 
-Sentinel$SAVI <- ((Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_red_2021_MedianComposite) * 0.5) /(Sentinel$Sentinel2_NIR_2021_MedianComposite + Sentinel$Sentinel2_red_2021_MedianComposite + 0.5)
-Sentinel$LSWI <- (Sentinel$Sentinel2_NIR_2021_MedianComposite - (Sentinel$Sentinel2_SWIR1_2021_MedianComposite+Sentinel$Sentinel2_SWIR2_2021_MedianComposite))/(Sentinel$Sentinel2_NIR_2021_MedianComposite - (Sentinel$Sentinel2_SWIR1_2021_MedianComposite+Sentinel$Sentinel2_SWIR2_2021_MedianComposite))
-Sentinel$BrightnessIndex <- (((Sentinel$Sentinel2_NIR_2021_MedianComposite * Sentinel$Sentinel2_red_2021_MedianComposite) + (Sentinel$Sentinel2_green_2021_MedianComposite * Sentinel$Sentinel2_green_2021_MedianComposite))^0.5) / 2 
-Sentinel$ClayIndex <- (Sentinel$Sentinel2_redEdge1_2021_MedianComposite / Sentinel$Sentinel2_redEdge3_2021_MedianComposite)
-Sentinel$SalinityIndex <- (Sentinel$Sentinel2_red_2021_MedianComposite - Sentinel$Sentinel2_NIR_2021_MedianComposite)/(Sentinel$Sentinel2_blue_2021_MedianComposite + Sentinel$Sentinel2_NIR_2021_MedianComposite)
-Sentinel$CarbonateIndex <- (Sentinel$Sentinel2_red_2021_MedianComposite / Sentinel$Sentinel2_blue_2021_MedianComposite)
-Sentinel$GypsumIndex <- (Sentinel$Sentinel2_SWIR2_2021_MedianComposite - Sentinel$Sentinel2_redEdge1_2021_MedianComposite)/(Sentinel$Sentinel2_SWIR2_2021_MedianComposite + Sentinel$Sentinel2_redEdge1_2021_MedianComposite)
+Sentinel$EVI <- 2.5 * ((Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_red_2021_MedianComposite) / ((Sentinel$Sentinel2_NIR_2021_MedianComposite + 6 * Sentinel$Sentinel2_red_2021_MedianComposite) - (7.5 * Sentinel$Sentinel2_blue_2021_MedianComposite) + 1))   
+Sentinel$SAVI <- 1.5 * ((Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_red_2021_MedianComposite) / (Sentinel$Sentinel2_NIR_2021_MedianComposite + Sentinel$Sentinel2_red_2021_MedianComposite + 0.5))
+Sentinel$TVI <- sqrt(Sentinel$Sentinel2_NDVI_2021_MedianComposite + 0.5) 
+Sentinel$NDMI <- (Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_SWIR1_2021_MedianComposite) / (Sentinel$Sentinel2_NIR_2021_MedianComposite + Sentinel$Sentinel2_SWIR1_2021_MedianComposite) # normilized difference moisture index
+Sentinel$COSRI <- Sentinel$Sentinel2_NDVI_2021_MedianComposite * ((Sentinel$Sentinel2_blue_2021_MedianComposite + Sentinel$Sentinel2_green_2021_MedianComposite)/(Sentinel$Sentinel2_red_2021_MedianComposite + Sentinel$Sentinel2_NIR_2021_MedianComposite))  # Combined Specteral Response Index
+Sentinel$LSWI <- (Sentinel$Sentinel2_NIR_2021_MedianComposite - Sentinel$Sentinel2_SWIR1_2021_MedianComposite) / (Sentinel$Sentinel2_NIR_2021_MedianComposite + Sentinel$Sentinel2_SWIR1_2021_MedianComposite)
+Sentinel$BrightnessIndex <- sqrt((Sentinel$Sentinel2_red_2021_MedianComposite^2) + (Sentinel$Sentinel2_NIR_2021_MedianComposite^2)) 
+Sentinel$ClayIndex <- Sentinel$Sentinel2_SWIR1_2021_MedianComposite / Sentinel$Sentinel2_SWIR2_2021_MedianComposite
+Sentinel$SalinityIndex <- (Sentinel$Sentinel2_SWIR1_2021_MedianComposite - Sentinel$Sentinel2_SWIR2_2021_MedianComposite) / (Sentinel$Sentinel2_SWIR1_2021_MedianComposite - Sentinel$Sentinel2_NIR_2021_MedianComposite)
+Sentinel$CarbonateIndex <- Sentinel$Sentinel2_red_2021_MedianComposite / Sentinel$Sentinel2_green_2021_MedianComposite
+Sentinel$GypsumIndex <- (Sentinel$Sentinel2_SWIR1_2021_MedianComposite - Sentinel$Sentinel2_SWIR2_2021_MedianComposite) / (Sentinel$Sentinel2_SWIR1_2021_MedianComposite + Sentinel$Sentinel2_SWIR2_2021_MedianComposite)
 
 # RS MODIS
-Modis$SAVI <- ((Modis$MODIS_NIR_band - Modis$MODIS_Red_band)/(Modis$MODIS_NIR_band + Modis$MODIS_Red_band + 0.5)) * (1.5)
-Modis$BrightnessIndex <- ((Modis$MODIS_Red_band)^2 - (Modis$MODIS_NIR_band)^2)
+Modis$SAVI <- 1.5 * ((Modis$MODIS_NIR_band - Modis$MODIS_Red_band) / (Modis$MODIS_NIR_band + Modis$MODIS_Red_band + 0.5))
+Modis$TVI <- sqrt(Modis$MODIS_NDVI_band + 0.5) 
+Modis$BrightnessIndex <- sqrt((Modis$MODIS_Red_band^2) + (Modis$MODIS_NIR_band^2)) 
 
 df_names <- data.frame()
 for (i in 1:length(names(Terrain))) {
@@ -193,7 +198,6 @@ covariates <- stack("./data/Stack_layers_DSM.tif")
 # 01.6 Plot the covariates maps ================================================
 
 reduce <- aggregate(covariates, fact=10, fun=mean)
-
 plot(reduce)
 
 # 01.6 Extract the values ======================================================
@@ -223,8 +227,9 @@ SoilCov <- df_cov
 for (i in 1:length(SoilCov)) {
   ID <- 1:nrow(SoilCov[[i]])
   SoilCov[[i]] <- cbind(df_cov[[i]], ID, st_drop_geometry(soil_infos_sp[[i]]))
-  cat("There is ", sum(is.na(SoilCov[[i]])== TRUE), "Na values in ", names(SoilCov[i])," soil list")
+  cat("There is ", sum(is.na(SoilCov[[i]])== TRUE), "Na values in ", names(SoilCov[i])," soil list \n")
 }
+
 
 # 02.2 Plot and export the correlation matrix ==================================
 
@@ -274,7 +279,8 @@ for (i in 1:length(df_cov)) {
 # on the running process.
 #===============================================================================
 
-x <- "70_100"
+x <- "0_10"
+depth_name <- "0 - 10"
 depth <- names(SoilCov[x])
 
 # Basic statistics
@@ -289,9 +295,9 @@ summary(SoilCov[[x]])
 
 # 03 Check covariates influences  ###############################################
 
-SoilCovMLCon <- SoilCov[[x]][,-c(81,82)] # Remove ID and site name
+SoilCovMLCon <- SoilCov[[x]][,-c(86,87)] # Remove ID and site name
 
-NumCovLayer = 80 # define number of covariate layer after hot coding
+NumCovLayer = 85 # define number of covariate layer after hot coding
 StartTargetCov = NumCovLayer + 1 # start column after all covariates
 NumDataCol= ncol(SoilCovMLCon) # number of column in all data set
 
@@ -306,14 +312,16 @@ texture_df <- SoilCovMLCon[,c((NumDataCol-3):(NumDataCol-1))]
 colnames(texture_df) <- c("SAND","SILT", "CLAY")
 texture_df <- TT.normalise.sum(texture_df, css.names =  c("SAND","SILT", "CLAY"))
 colnames(texture_df) <- colnames(SoilCovMLCon[,c((NumDataCol-3):(NumDataCol-1))])
-SoilCovMLCon[,-c((NumDataCol-3):(NumDataCol-1))] <- texture_df
-
-SoilCovMLConTrans <- cbind(SoilCovMLConTrans,  SoilCovMLCon[,c(StartTargetCov:NumDataCol)])
+alr_df <- as.data.frame(alr(texture_df)) # Additive-log ratio with Sand/Clay and Silt/Clay (last column is taken)
+colnames(alr_df) <- c("alr.Sand", "alr.Silt")
+SoilCovMLCon <- SoilCovMLCon[,-c((NumDataCol-3):(NumDataCol-1))] 
+SoilCovMLConTrans <- cbind(SoilCovMLConTrans,  SoilCovMLCon[,c(StartTargetCov:(NumDataCol-3))], alr_df, texture_df)
+NumDataCol <- (NumDataCol -1)
 
 # 03.2 Develop models ==========================================================
 FormulaMLCon  = list()
 
-for (i in 1:(NumDataCol - NumCovLayer)) { 
+for (i in 1:(ncol(SoilCovMLConTrans) - NumCovLayer - 3)) { 
   FormulaMLCon[[i]] = as.formula(paste(names(SoilCovMLConTrans)[NumCovLayer+i]," ~ ",paste(names(SoilCovMLConTrans)[1:NumCovLayer],collapse="+")))
 }
 
@@ -379,7 +387,6 @@ end_time <- proc.time()
 print(end_time - start_time)
 print("Cubist done")
 
-
 # QRF
 FitQRaFCon  = list()
 start_time <- proc.time()
@@ -417,7 +424,7 @@ for (i in 1:length(ResultsModelCon)) {
 ScalesMolel <- list(x=list(relation="free"), y=list(relation="free"))
 BwplotModelCon = list()
 for (i in 1:length(ResultsModelCon)){ 
-  BwplotModelCon[[i]] <- bwplot(ResultsModelCon[[i]], scales=ScalesMolel, main = paste0("Comparative models of ",names(SoilCovMLCon)[NumCovLayer+i], " for ", depth, " soil"))
+  BwplotModelCon[[i]] <- bwplot(ResultsModelCon[[i]], scales=ScalesMolel, main = paste0("Comparative models of ",names(SoilCovMLCon)[NumCovLayer+i], " for ", depth_name, " cm increment"))
   
   png(paste0("./export/preprocess/", depth,"/Boxplot_first_run_model_",names(SoilCovMLConTrans)[NumCovLayer+i], "_for_",depth,"_soil.png"),    # File name
       width = 800, height = 800)
@@ -479,7 +486,7 @@ for (i in 1:length(ModelConList)) {
   ModelsPlots[[i]] <- ggplot(AllVarImportanceLong, aes(x = reorder(Variable, Importance), y = Importance, fill = Model)) +
     geom_bar(stat = "identity", position = "dodge") +  
     coord_flip() +  
-    labs(title = paste0("Top 20 covariates influence accros all models of ", names(SoilCovMLConTrans)[NumCovLayer+i], " for ", depth, " soil"), 
+    labs(title = paste0("Top 20 covariates influence accros all models of ", names(SoilCovMLConTrans)[NumCovLayer+i], " for ", depth_name, " cm increment"), 
          x = "Covariates", 
          y = "Importance") +
     theme_minimal() +
@@ -500,7 +507,7 @@ Boruta_covariates = list()
 # Individual plots
 for (i in 1:length(FormulaMLCon)) {
   set.seed(seed)
-  Boruta[[i]] <- Boruta(FormulaMLCon[[i]], data = SoilCovMLConTrans)
+  Boruta[[i]] <- Boruta(FormulaMLCon[[i]], data = SoilCovMLConTrans, rfeControl = TrainControl)
   BorutaBank <- TentativeRoughFix(Boruta[[i]])
   
   pdf(paste0("./export/boruta/", depth,"/Boruta_",names(SoilCovMLConTrans)[NumCovLayer+i], "_for_",depth,"_soil.pdf"),    # File name
@@ -509,7 +516,7 @@ for (i in 1:length(FormulaMLCon)) {
       colormodel = "cmyk")   # Color model 
   
   plot(BorutaBank, xlab = "", xaxt = "n",
-       main=paste0("Feature Importance - Boruta ",names(SoilCovMLConTrans)[NumCovLayer+i]," for ", depth ," cm depth"))
+       main=paste0("Feature Importance - Boruta ",names(SoilCovMLConTrans)[NumCovLayer+i]," for ", depth_name ," cm increment"))
   lz <- lapply(1:ncol(BorutaBank$ImpHistory),
                function(j)BorutaBank$ImpHistory[is.finite(BorutaBank$ImpHistory[,j]),j])
   names(lz) <- c(names(SoilCovMLConTrans)[1:NumCovLayer],c("sh_Max","sh_Mean","sh_Min"))
@@ -546,35 +553,56 @@ BorutaCovPlot$Y = factor(BorutaCovPlot$Y);BorutaCovPlot$X = factor(BorutaCovPlot
 BorutaCovPlot$Z.1 <- as.logical(BorutaCovPlot$Z.1)
 BorutaCovPlot$Y = factor(BorutaCovPlot$Y, levels = rev(unique(BorutaCovPlot$Y)))
 
-FigCovImpoBr = ggplot(BorutaCovPlot, aes(x = X, y = Y)) + 
-  geom_tile(aes(fill = Z, colour = Z.1),  size = 1,show.legend=F) + 
-  labs(title = paste0("Boruta combinned plot for ", depth ," depth") , x = "Covariates", y = "Soil properties")+
+# Split into two groups
+df1 <- BorutaCovPlot[BorutaCovPlot$X %in% unique(BorutaCovPlot$X)[1:42], ]
+df2 <- BorutaCovPlot[BorutaCovPlot$X %in% unique(BorutaCovPlot$X)[(43):length(unique(BorutaCovPlot$X))], ]
+
+# First part
+p1 <- ggplot(df1, aes(x = X, y = Y)) + 
+  geom_tile(aes(fill = Z, colour = Z.1), size = 1) + 
+  labs(x = "Variables importance", y = "Soil properties", fill = "Importance") +
   theme_classic() +
-  scale_fill_gradient(limits = c(min(BorutaCovPlot$Z), max(BorutaCovPlot$Z)),
-                      low="#ffffd9", high="#081d58") +
-  theme(axis.text.x = element_text(colour = "black", size=10, angle = 90, hjust = 1), 
-        axis.text.y = element_text(colour = "black", size=10)) +
-  geom_text(aes(label = round(Z, 1)),cex=3) +
+  scale_fill_viridis_c(option = "E") +  
   scale_color_manual(values = c('#00000000', 'red')) +
+  theme(axis.text.x = element_text(colour = "black", size = 10, angle = 90, hjust = 1),
+        axis.text.y = element_text(colour = "black", size = 10),
+        legend.position = "right") +  
+  geom_text(aes(label = round(Z, 1)), cex = 3) +
   coord_flip() + 
-  coord_equal() 
+  coord_equal()
 
+# Second part
+p2 <- ggplot(df2, aes(x = X, y = Y)) + 
+  geom_tile(aes(fill = Z, colour = Z.1), size = 1, show.legend = FALSE) + 
+  labs(x = "Variables importance", y = "Soil properties", fill = "Importance") +
+  theme_classic() +
+  scale_fill_viridis_c(option = "E") + 
+  scale_color_manual(values = c('#00000000', 'red')) +
+  theme(axis.text.x = element_text(colour = "black", size = 10, angle = 90, hjust = 1),
+        axis.text.y = element_text(colour = "black", size = 10)) +
+  geom_text(aes(label = round(Z, 1)), cex = 3) +
+  coord_flip() + 
+  coord_equal()
 
-ggsave(paste0("./export/boruta/", depth,"/Boruta_final_combinned_plot_", depth,"_soil.png"), FigCovImpoBr, width = 30, height = 10)
-ggsave(paste0("./export/boruta/", depth,"/Boruta_final_combinned_plot_", depth,"_soil.pdf"), FigCovImpoBr, width = 30, height = 10)
+# Combinne poth plot
+FigCovImpoBr <- (p1 / p2)  + 
+  plot_annotation(title = paste0("Boruta selection of features for the ", depth_name, " cm depth interval"),
+                  theme = theme(plot.title = element_text(size = 14, face = "bold", hjust = 0.5)))
+
+ggsave(paste0("./export/boruta/", depth,"/Boruta_final_combinned_plot_", depth,"_soil.png"), FigCovImpoBr, width = 15, height = 8.5)
+ggsave(paste0("./export/boruta/", depth,"/Boruta_final_combinned_plot_", depth,"_soil.pdf"), FigCovImpoBr, width = 15, height = 8.5)
 plot(FigCovImpoBr) 
 
 
 # 03.6 RFE covariate influence =================================================
 
-TrainControlRFE <- rfeControl(functions = rfFuncs,method = "repeatedcv",
-                              repeats = 3,verbose = FALSE)
+TrainControlRFE <- rfeControl(functions = rfFuncs,method = "repeatedcv", repeats = 3,verbose = FALSE)
 ResultRFECon =list()
 subsets= c(seq(1,NumCovLayer,5))
 for (i in 1:length(FormulaMLCon)) {
   set.seed(seed)
   ResultRFECon[[i]] <- rfe(FormulaMLCon[[i]], data=SoilCovMLConTrans, 
-                           sizes = subsets,rfeControl = TrainControlRFE)
+                           sizes = subsets, rfeControl = TrainControlRFE)
   print(names(SoilCovMLConTrans)[i+NumCovLayer])
 }
 
@@ -593,7 +621,7 @@ for (i in 1:length(ResultRFECon)) {
   
   PlotResultRFE[[i]] = plot(ResultRFECon[[i]],
                             type = c("g", "o"),
-                            main=paste0("RFE of ",names(SoilCovMLConTrans)[NumCovLayer+i]," for ",depth, " soil"),
+                            main=paste0("RFE of ",names(SoilCovMLConTrans)[NumCovLayer+i]," for ",depth_name, " cm increment"),
                             xlab="Optimal variables number")
   
   pdf(paste0("./export/RFE/", depth,"/RFE_",names(SoilCovMLConTrans)[NumCovLayer+i], "_for_",depth,"_soil.pdf"),    # File name
@@ -612,7 +640,7 @@ for (i in 1:length(ResultRFECon)) {
 #===============================================================================
 
 
-First_depth_preprocess <- list(
+Third_depth_preprocess <- list(
   Cov = SoilCovMLConTrans,
   Cov_original = SoilCovMLCon,
   Models = ModelConList,
@@ -625,5 +653,5 @@ First_depth_preprocess <- list(
   RFE_fig = PlotResultRFE
 )
 
-save(First_depth_preprocess, file = paste0("./export/save/Selected_cov_", depth,".RData"))
+save(Third_depth_preprocess, file = paste0("./export/save/Selected_cov_", depth,".RData"))
 rm(list = ls())

@@ -5,7 +5,7 @@
 # Author: Mathias Bellat  and Pegah Khosravani                     #
 # Affiliation : Tubingen University                                #
 # Creation date : 09/10/2024                                       #
-# E-mail: mathias.bellat@uni-tuebingen.de                          #
+# E-mail: mathias.bellat@uni-tubingen.de                           #
 ####################################################################
 
 
@@ -29,7 +29,7 @@ rm(list = ls(all.names = TRUE))
 install.packages("pacman")
 library(pacman) #Easier way of loading packages
 pacman::p_load(raster, terra, sf, sp, viridis, ggplot2, remotes, RColorBrewer, wesanderson, grid, 
-gridExtra, colorspace, mapview, biscale, ncdf4,SpaDES, ggspatial,soiltexture, cowplot, hrbrthemes) # Specify required packages and download it if needed
+gridExtra, colorspace, mapview, biscale, ncdf4,SpaDES, ggspatial,soiltexture, cowplot, hrbrthemes, compositions) # Specify required packages and download it if needed
 
 devtools::install_github("ducciorocchini/cblindplot")
 library(cblindplot)
@@ -45,43 +45,46 @@ sessionInfo()
 
 depth <- "0_10"
 layers <- list.files(paste0("./export/predictions_DSM/", depth,"/"), pattern = "*tif" , full.names = TRUE)
-layers <- layers[1:10] # Remove the normalised stack
+layers <- layers[1:9] # Remove the normalised stack
 raster_stack <- stack(layers)
-raster_stack <- raster_stack[[c(8,1,7,4,3,5,9,10,2,6)]] # Re_order the raster position
+raster_stack <- raster_stack[[c(9,3,8,5,4,6,7,1,2)]] # Re_order the raster position
 survey <- st_read("./data/Survey_Area.gpkg", layer = "Survey_Area")
 
 # 08.2 Normalise the texture band on 100% ======================================
 
-tiles.sand <- splitRaster(raster_stack[[7]], nx = 5, ny = 5)
-tiles.silt <- splitRaster(raster_stack[[8]], nx = 5, ny = 5) 
-tiles.clay <- splitRaster(raster_stack[[9]], nx = 5, ny = 5) 
+tiles.sand <- splitRaster(raster_stack[[8]], nx = 5, ny = 5)
+tiles.silt <- splitRaster(raster_stack[[9]], nx = 5, ny = 5) 
 
 results <- list()
 
 for (i in 1:length(tiles.sand)) {
-x <- stack(tiles.sand[[i]],tiles.silt[[i]], tiles.clay[[i]])
+x <- stack(tiles.sand[[i]],tiles.silt[[i]])
 x_df <- raster::as.data.frame(x, xy = TRUE)
-texture_df <- x_df[,c(3:5)]
-colnames(texture_df) <- c("SAND","SILT", "CLAY")
-texture_df <- TT.normalise.sum(texture_df, css.names =  c("SAND","SILT", "CLAY"))
-x_df <- cbind(x_df[,c(1:2)], texture_df)
+texture_df <- x_df[,c(3:4)]
+y <- alrInv(texture_df)
+y_df <- as.data.frame(y)*100
+x_df <- cbind(x_df[,c(1:2)], y_df)
 x_normalise <- rasterFromXYZ(x_df)
 results[[i]] <- x_normalise
 print(paste0(i, " / ", length(tiles.silt)))
 }
 
 raster_final <- do.call(merge, results)
-crs(raster_final) <- "EPSG:32638"
-
-raster_stack <- stack(raster_stack[[1:6]], raster_stack[[10]])
-raster_stack <- stack(raster_stack, raster_final)
-raster_stack <- raster_stack[[c(1:6,8:10,7)]]
-names(raster_stack) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "Sand", "Silt", "Clay", "MWD")
+raster_stack <- stack(raster_stack[[1:7]], raster_final)
+names(raster_stack) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "MWD", "Sand", "Silt", "Clay")
 
 # 08.3 Export final maps =======================================================
 
+# Only Texture full maps
+raster_texture <- stack(raster_stack[[8:10]])
+raster_texture <- projectRaster(raster_texture, crs = "EPSG:32638")
+x <- rast(raster_texture)
+for (i in 1:3) {
+  x1 <- x[[i]]
+  writeRaster(x1, paste0("./export/predictions_DSM/", depth, "/DSM_", names(x1) ,"_for_", depth,"_soil.tif"), overwrite=TRUE) #By default already GeoTiff
+}
+
 # For GeoTiff format
-crs(raster_stack) <- "EPSG:32638"
 x_croped <- crop(raster_stack, survey)
 x_masked <- mask(x_croped, survey)
 x_repro <- projectRaster(x_masked, crs = "EPSG:4326")
@@ -94,7 +97,7 @@ CDF_df <- lapply(1:nlayers(x_repro), function(i) {
   rast(x_repro[[i]])  # Convertir chaque couche en SpatRaster
 })
 
-names(CDF_df) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "Sand", "Silt", "Clay", "MWD")
+names(CDF_df) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "MWD", "Sand", "Silt", "Clay")
 
 
 soil_to_netcdf <- function(soil_list, output_file, overwrite = FALSE) {
@@ -131,10 +134,10 @@ soil_to_netcdf <- function(soil_list, output_file, overwrite = FALSE) {
     Ct = "%",
     Corg = "%",
     EC = "μS/m",
+    MWD = "mm",
     Sand = "%",
     Silt = "%",
-    Clay = "%",
-    MWD = "mm"
+    Clay = "%"
   )
   
   # Create list of variables with appropriate units
@@ -160,9 +163,9 @@ soil_to_netcdf <- function(soil_list, output_file, overwrite = FALSE) {
   }
   
   # Add global attributes
-  ncatt_put(ncout, 0, "title", "Soil properties for 70 - 100 cm depth ")
+  ncatt_put(ncout, 0, "title", "Soil properties for 0 - 10 cm depth ")
   ncatt_put(ncout,0,"institution","Tuebingen University, CRC1070 ResourceCultures")
-  ncatt_put(ncout, 0, "description", "Soil physicochemical properties in the Northern Kurdsitan region of Irak at 70 - 100 cm depth increment")
+  ncatt_put(ncout, 0, "description", "Soil physicochemical properties in the Northern Kurdsitan region of Irak at 0 - 10 cm depth increment")
   ncatt_put(ncout,0,"author", "Mathias Bellat PhD. candidate at Tuebingen University (mathias.bellat@uni-tuebingen.de)")
   ncatt_put(ncout, 0, "creation_date", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
   
@@ -187,10 +190,10 @@ soil_to_netcdf <- function(soil_list, output_file, overwrite = FALSE) {
     Ct = "Total carbon content",
     Corg = "Organic carbon content",
     EC = "Electrical conductivity",
+    MWD = "Mean weight diameter",
     Sand = "Sand content",
     Silt = "Silt content",
-    Clay = "Clay content",
-    MWD = "Mean weight diameter"
+    Clay = "Clay content"
   )
   
   # Add variable-specific attributes
@@ -268,7 +271,7 @@ raster_resize_masked <- mask(raster_resize_croped, survey)
 rasterdf <- raster::as.data.frame(raster_resize_masked, xy = TRUE)
 rasterdf <- rasterdf[complete.cases(rasterdf),]
 
-legend <- c("pH [KCl]", "CaCO3 [%]", "Nt [%]" , "Ct [%]", "Corg [%]", "EC [µS/cm]", "Sand [%]", "Silt [%]", "Clay [%]", "MWD [mm]")
+legend <- c("pH [KCl]", "CaCO3 [%]", "Nt [%]" , "Ct [%]", "Corg [%]", "EC [µS/cm]", "MWD [mm]", "Sand [%]", "Silt [%]", "Clay [%]")
   
 bounds <- st_bbox(survey)
 xlim_new <- c(bounds["xmin"] - 3000, bounds["xmax"] + 3000)
@@ -480,7 +483,7 @@ Prediction_top_soil[3] <- (1.175*Prediction_top_soil[3]) - 0.262
 
 # Texture standardisation Minasny and McBratney (2001) 0.063 to 0.05
 
-Texture <- Prediction_top_soil[,c(9:11)]
+Texture <- Prediction_top_soil[,c(10:12)]
 colnames(Texture) <- c("SAND","SILT", "CLAY")
 Texture <- TT.normalise.sum(Texture, css.names =  c("SAND","SILT", "CLAY"))
 
@@ -489,7 +492,7 @@ Texture <- TT.text.transf(
   base.css.ps.lim = c(0, 0.002, 0.05, 2) # USDA system
 )
 
-Prediction_top_soil[,c(9:11)] <- Texture
+Prediction_top_soil[,c(10:12)] <- Texture
 # 09.3 Sub soil preparation ====================================================
 
 # We decide to match 30 - 70 cm depth increment of our prediction with 30 - 60 cm SoilGrid model
@@ -554,7 +557,7 @@ for (i in 3:length(Prediction.thirty_df)) {
 Prediction_sub_soil[3] <- (1.175*Prediction_sub_soil[3]) - 0.262
 
 # Texture standardisation Minasny and McBratney (2001) 0.063 to 0.05
-Texture <- Prediction_sub_soil[,c(9:11)]
+Texture <- Prediction_sub_soil[,c(10:12)]
 colnames(Texture) <- c("SAND","SILT", "CLAY")
 Texture <- TT.normalise.sum(Texture, css.names =  c("SAND","SILT", "CLAY"))
 
@@ -563,7 +566,7 @@ Texture <- TT.text.transf(
   base.css.ps.lim = c(0, 0.002, 0.05, 2) # USDA system
 )
 
-Prediction_sub_soil[,c(9:11)] <- Texture
+Prediction_sub_soil[,c(10:12)] <- Texture
 
 # 09.4 Lower soil preparation ==================================================
 Prediction.seventy <- stack("./export/final_maps/70_100_prediction_map.tif")
@@ -617,7 +620,7 @@ Prediction_lower_soil <- Prediction.seventy_df
 Prediction_lower_soil[3] <- (1.175*Prediction_lower_soil[3]) - 0.262
 
 # Texture standardisation Minasny and McBratney (2001) 0.063 to 0.05
-Texture <- Prediction_lower_soil[,c(9:11)]
+Texture <- Prediction_lower_soil[,c(10:12)]
 colnames(Texture) <- c("SAND","SILT", "CLAY")
 Texture <- TT.normalise.sum(Texture, css.names =  c("SAND","SILT", "CLAY"))
 
@@ -626,7 +629,7 @@ Texture <- TT.text.transf(
   base.css.ps.lim = c(0, 0.002, 0.05, 2) # USDA system
 )
 
-Prediction_lower_soil[,c(9:11)] <- Texture
+Prediction_lower_soil[,c(10:12)] <- Texture
 
 # 09.5 Explore the relations  ==================================================
 # Here we decided to split every run by soil depth to have a better vision
@@ -634,7 +637,7 @@ Prediction_lower_soil[,c(9:11)] <- Texture
 #===============================================================================
 depth <- "lower_soil"
 increment <- "lower soil"
-compared_map <- merge(SoilGrid_lower_soil, Prediction_lower_soil[,c(1:3,5,7,9:11)], by =c("x", "y"))
+compared_map <- merge(SoilGrid_lower_soil, Prediction_lower_soil[,c(1:3,5,7,10:12)], by =c("x", "y"))
 colnames(compared_map)
 compared_map <- compared_map[, c("x", "y", "SoilGrid.pH", "SoilGrid.Nt", "SoilGrid.Corg","SoilGrid.Sand",    
                                  "SoilGrid.Silt", "SoilGrid.Clay", "pH" ,"Nt", "Corg", "Sand", "Silt" ,"Clay")]
@@ -783,27 +786,26 @@ load("./export/save/lower_soil_SoilGrid.RData")
 lower.soil <- compared_map
 final.map <- top.soil[,c(1:2)]
 
+# Repeat for each variables names. The command 'bi_class' does not work with columns number.
 
 compared.list <- list(top.soil = top.soil,
                       sub.soil = sub.soil,
                       lower.soil = lower.soil)
 
-# Repeat for each variables names. The command 'bi_class' does not work with columns number.
 for (i in 1:length(compared.list)) {
-  compared.list[[i]] <- bi_class(compared.list[[i]], x = Silt, y = SoilGrid.Silt , style = "quantile", dim = 3)
+  compared.list[[i]] <- bi_class(compared.list[[i]], x = Clay, y = SoilGrid.Clay , style = "quantile", dim = 3)
   split_result <- stringr::str_split_fixed(compared.list[[i]][[length(compared.list[[i]])]], "-", n = 2)
   compared.list[[i]][[paste0(length(compared.list[[i]]), "_1")]] <- as.numeric(split_result[,1])
   compared.list[[i]][[paste0(length(compared.list[[i]]) + 1, "_2")]] <- as.numeric(split_result[,2])
 }
 
 df <- top.soil[,c(1:2)]
-df$predicted.Silt <- (compared.list[[1]][[length(compared.list[[1]])- 1]] + compared.list[[2]][[length(compared.list[[2]])- 1]] + compared.list[[3]][[length(compared.list[[3]])- 1]])/3
-df$SoilGrid.Silt <- (compared.list[[1]][[length(compared.list[[1]])]] + compared.list[[2]][[length(compared.list[[2]])]] + compared.list[[3]][[length(compared.list[[3]])]])/3
+df$predicted.Clay <- (compared.list[[1]][[length(compared.list[[1]])- 1]] + compared.list[[2]][[length(compared.list[[2]])- 1]] + compared.list[[3]][[length(compared.list[[3]])- 1]])/3
+df$SoilGrid.Clay <- (compared.list[[1]][[length(compared.list[[1]])]] + compared.list[[2]][[length(compared.list[[2]])]] + compared.list[[3]][[length(compared.list[[3]])]])/3
 df[,c(3:4)] <- round(df[, c(3:4)], digit =0)
 
 # Combine columns
-final.map$Silt <- paste(df[[3]], df[[4]], sep = "-")
-
+final.map$Clay <- paste(df[[3]], df[[4]], sep = "-")
 
 light_graph <- list()
 for (i in 3:length(final.map)) {
@@ -820,7 +822,7 @@ for (i in 3:length(final.map)) {
       axis.text = element_blank()
     )
   
-  if (i == 3) {
+
     legend <- bi_legend(pal = "GrPink",
                         dim = 3,
                         xlab = "Higher values from SoilGrid",
@@ -831,14 +833,9 @@ for (i in 3:length(final.map)) {
       draw_plot(map, 0, 0, 1, 1) +
       draw_plot(legend, 0.01, 0.78, 0.2, 0.2)
     
-    t <- i - 2 
-    light_graph[[t]] <- finalPlot
-  }
-  if (i > 3){
-
 t <- i - 2 
-light_graph[[t]] <- map
-  }  
+light_graph[[t]] <- finalPlot
+
 }
 
 png("./export/visualisations/combinned/SoilGrid_vs_prediction_values.png",    # File name
@@ -867,9 +864,10 @@ rm(list = ls(all.names = TRUE))
 depth <- "0_10"
 layers <- list.files(paste0("./export/uncertainty_DSM/", depth,"/"), pattern = "*tif" , full.names = TRUE)
 raster_stack <- stack(layers)
-raster_stack <- raster_stack[[c(8,1,7,4,3,5,9,10,2,6)]]
+raster_stack <- raster_stack[[c(9,3,8,5,4,6,7,1,2)]]
 survey <- st_read("./data/Survey_Area.gpkg", layer = "Survey_Area")
-names(raster_stack) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "Sand", "Silt", "Clay", "MWD")
+names(raster_stack) <- c("pH", "CaCO3", "Nt", "Ct", "Corg", "EC", "MWD", "alr.Sand", "alr.Silt")
+
 crs(raster_stack) <- "EPSG:32638"
 x <- rast(raster_stack)
 x_croped <- crop(x, survey)
@@ -878,7 +876,7 @@ terra::writeRaster(x_masked, paste0("./export/uncertainty_DSM/", depth, "_uncert
 
 rm(list = ls(all.names = TRUE))
 
-# 10.2 Prepare SG ==============================================================
+# 10.3 Prepare SG ==============================================================
 
 # For 0-5 cm increment
 files <- list.files("./data/Soil_grid/Uncertainty/0_5/", pattern = "*tif", full.names = TRUE)
@@ -905,7 +903,7 @@ files <- list.files("./data/Soil_grid/Uncertainty/60_100/", pattern = "*tif", fu
 SoilGrid.sixty <- stack(files)
 SoilGrid.sixty <- projectRaster(SoilGrid.sixty, crs = "EPSG:32638")
 
-# 10.3 Top soil preparation ====================================================
+# 10.4 Top soil preparation ====================================================
 
 Prediction.zero <- stack("./export/uncertainty_DSM/0_10_uncertainty_map.tif")
 crs(Prediction.zero) <- "EPSG:32638"
@@ -942,18 +940,19 @@ for (i in 3: length(SoilGrid_top_soil)) {
 }
 
 # Convert to % values and reduce the pH by 10 to fit our values
-colnames(SoilGrid_top_soil) <- c("x", "y", "SoilGrid.Clay", "SoilGrid.Corg", "SoilGrid.Nt", "SoilGrid.pH", "SoilGrid.Sand", "SoilGrid.Silt")
-SoilGrid_top_soil[,c(3,6:8)] <- SoilGrid_top_soil[,c(3,6:8)]/10
-SoilGrid_top_soil[4] <- SoilGrid_top_soil[4]/1000
-SoilGrid_top_soil[5] <- SoilGrid_top_soil[5]/10000
+SoilGrid_top_soil <- SoilGrid_top_soil[,-c(3,7:8)]
+colnames(SoilGrid_top_soil) <- c("x", "y", "SoilGrid.Corg", "SoilGrid.Nt", "SoilGrid.pH")
+SoilGrid_top_soil[5] <- SoilGrid_top_soil[5]/10
+SoilGrid_top_soil[3] <- SoilGrid_top_soil[3]/1000
+SoilGrid_top_soil[4] <- SoilGrid_top_soil[4]/10000
 
 # Replace zero value and values under or over the SD from the SoilGrid
-for (i in 3:8) {
+for (i in 3:5) {
   SoilGrid_top_soil[[i]][SoilGrid_top_soil[[i]] == 0] <- median(SoilGrid_top_soil[[i]])
   
 }
 sum(SoilGrid_top_soil == 0)
-summary(SoilGrid_top_soil[3:8])
+summary(SoilGrid_top_soil[3:5])
 
 replace_sd <- function(x) {
   mean_val <- mean(x, na.rm = TRUE) 
@@ -964,15 +963,15 @@ replace_sd <- function(x) {
   return(x)
 }
 
-SoilGrid_top_soil[, 3:8] <- as.data.frame(lapply(SoilGrid_top_soil[, 3:8], replace_sd))
-summary(SoilGrid_top_soil[3:8])
+SoilGrid_top_soil[, 3:5] <- as.data.frame(lapply(SoilGrid_top_soil[, 3:5], replace_sd))
+summary(SoilGrid_top_soil[3:5])
 
 Prediction_top_soil <- Prediction.zero_df
 for (i in 3:length(Prediction.zero_df)) {
   Prediction_top_soil[i] <- ((Prediction.zero_df[i]*10) + (Prediction.ten_df[i]*20))/30  
 }
 
-# 10.4 Sub soil preparation ====================================================
+# 10.5 Sub soil preparation ====================================================
 
 # We decide to match 30 - 70 cm depth increment of our prediction with 30 - 60 cm SoilGrid model
 
@@ -1000,16 +999,17 @@ SoilGrid.thirty_df <- SoilGrid.thirty_df[complete.cases(SoilGrid.thirty_df),]
 SoilGrid_sub_soil <- SoilGrid.thirty_df
 
 # Convert to % values and reduce the pH by 10 to fit our values
-colnames(SoilGrid_sub_soil) <- c("x", "y", "SoilGrid.Clay", "SoilGrid.Corg", "SoilGrid.Nt", "SoilGrid.pH", "SoilGrid.Sand", "SoilGrid.Silt")
-SoilGrid_sub_soil[,c(3,6:8)] <- SoilGrid_sub_soil[,c(3,6:8)]/10
-SoilGrid_sub_soil[4] <- SoilGrid_sub_soil[4]/1000
-SoilGrid_sub_soil[5] <- SoilGrid_sub_soil[5]/10000
+SoilGrid_sub_soil <- SoilGrid_sub_soil[,-c(3,7:8)]
+colnames(SoilGrid_sub_soil) <- c("x", "y", "SoilGrid.Corg", "SoilGrid.Nt", "SoilGrid.pH")
+SoilGrid_sub_soil[5] <- SoilGrid_sub_soil[5]/10
+SoilGrid_sub_soil[3] <- SoilGrid_sub_soil[3]/1000
+SoilGrid_sub_soil[4] <- SoilGrid_sub_soil[4]/10000
 
-for (i in 3:8) {
+for (i in 3:5) {
   SoilGrid_sub_soil[[i]][SoilGrid_sub_soil[[i]] == 0] <- median(SoilGrid_sub_soil[[i]])
 }
 sum(SoilGrid_sub_soil == 0)
-summary(SoilGrid_sub_soil[3:8])
+summary(SoilGrid_sub_soil[3:5])
 
 replace_sd <- function(x) {
   mean_val <- mean(x, na.rm = TRUE) 
@@ -1020,15 +1020,15 @@ replace_sd <- function(x) {
   return(x)
 }
 
-SoilGrid_sub_soil[, 3:8] <- as.data.frame(lapply(SoilGrid_sub_soil[, 3:8], replace_sd))
-summary(SoilGrid_sub_soil[3:8])
+SoilGrid_sub_soil[, 3:5] <- as.data.frame(lapply(SoilGrid_sub_soil[, 3:5], replace_sd))
+summary(SoilGrid_sub_soil[3:5])
 
 Prediction_sub_soil <- Prediction.thirty_df
 for (i in 3:length(Prediction.thirty_df)) {
   Prediction_sub_soil[i] <- ((Prediction.thirty_df[i]*20) + (Prediction.fifty_df[i]*20))/40  
 }
 
-# 10.5 Lower soil preparation ==================================================
+# 10.6 Lower soil preparation ==================================================
 Prediction.seventy <- stack("./export/uncertainty_DSM/70_100_uncertainty_map.tif")
 crs(Prediction.seventy) <- "EPSG:32638"
 
@@ -1047,16 +1047,17 @@ SoilGrid.sixty_df <- SoilGrid.sixty_df[complete.cases(SoilGrid.sixty_df),]
 SoilGrid_lower_soil <- SoilGrid.sixty_df
 
 # Convert to % values and reduce the pH by 10 to fit our values
-colnames(SoilGrid_lower_soil) <- c("x", "y", "SoilGrid.Clay", "SoilGrid.Corg", "SoilGrid.Nt", "SoilGrid.pH", "SoilGrid.Sand", "SoilGrid.Silt")
-SoilGrid_lower_soil[,c(3,6:8)] <- SoilGrid_lower_soil[,c(3,6:8)]/10
-SoilGrid_lower_soil[4] <- SoilGrid_lower_soil[4]/1000
-SoilGrid_lower_soil[5] <- SoilGrid_lower_soil[5]/10000
+SoilGrid_lower_soil <- SoilGrid_lower_soil[,-c(3,7:8)]
+colnames(SoilGrid_lower_soil) <- c("x", "y", "SoilGrid.Corg", "SoilGrid.Nt", "SoilGrid.pH")
+SoilGrid_lower_soil[5] <- SoilGrid_lower_soil[5]/10
+SoilGrid_lower_soil[3] <- SoilGrid_lower_soil[3]/1000
+SoilGrid_lower_soil[4] <- SoilGrid_lower_soil[4]/10000
 
-for (i in 3:8) {
+for (i in 3:5) {
   SoilGrid_lower_soil[[i]][SoilGrid_lower_soil[[i]] == 0] <- median(SoilGrid_lower_soil[[i]])
 }
 sum(SoilGrid_lower_soil == 0)
-summary(SoilGrid_lower_soil[3:8])
+summary(SoilGrid_lower_soil[3:5])
 
 replace_sd <- function(x) {
   mean_val <- mean(x, na.rm = TRUE) 
@@ -1067,31 +1068,29 @@ replace_sd <- function(x) {
   return(x)
 }
 
-SoilGrid_lower_soil[, 3:8] <- as.data.frame(lapply(SoilGrid_lower_soil[, 3:8], replace_sd))
-summary(SoilGrid_lower_soil[3:8])
+SoilGrid_lower_soil[, 3:5] <- as.data.frame(lapply(SoilGrid_lower_soil[, 3:5], replace_sd))
+summary(SoilGrid_lower_soil[3:5])
 
 Prediction_lower_soil <- Prediction.seventy_df
 
-# 10.6 Ensemble model ==========================================================
+# 10.7 Ensemble model ==========================================================
 
 depth <- "lower_soil"
 load(paste0("./export/save/",depth,"_SoilGrid.RData"))
+compared_map <- compared_map[-c(6:8,12:14)]
 prediction_map <- rasterFromXYZ(compared_map)
 crs(prediction_map) <- "EPSG:32638"
 
-uncertainty_df <- merge(SoilGrid_lower_soil, Prediction_lower_soil[,c(1:3,5,7,9:11)], by =c("x", "y"))
-colnames(uncertainty_map)
-uncertainty_df <- uncertainty_df[, c("x", "y", "SoilGrid.pH", "SoilGrid.Nt", "SoilGrid.Corg","SoilGrid.Sand",    
-                                 "SoilGrid.Silt", "SoilGrid.Clay", "pH" ,"Nt", "Corg", "Sand", "Silt" ,"Clay")]
+uncertainty_df <- merge(SoilGrid_lower_soil, Prediction_lower_soil[,c(1:3,5,7)], by =c("x", "y"))
+colnames(uncertainty_df)
+uncertainty_df <- uncertainty_df[, c("x", "y", "SoilGrid.pH", "SoilGrid.Nt", "SoilGrid.Corg", "pH" ,"Nt", "Corg")]
 uncertainty_map <- rasterFromXYZ(uncertainty_df)
 crs(uncertainty_map) <- "EPSG:32638"
 uncertainty_map <- resample(uncertainty_map, prediction_map, method= "bilinear")
 
 # Calculate MAE from all residuals
-SG_ERROR_ABS<-(abs(uncertainty_map$SoilGrid.pH)+ abs(uncertainty_map$SoilGrid.Nt)+ abs(uncertainty_map$SoilGrid.Corg)+ 
-                       abs(uncertainty_map$SoilGrid.Sand)+ abs(uncertainty_map$SoilGrid.Silt)+ abs(uncertainty_map$SoilGrid.Clay))/6
-Prediction_ERROR_ABS<-(abs(uncertainty_map$pH)+ abs(uncertainty_map$Nt)+ abs(uncertainty_map$Corg)+ 
-                         abs(uncertainty_map$Sand)+ abs(uncertainty_map$Silt)+ abs(uncertainty_map$Clay))/6
+SG_ERROR_ABS<-(abs(uncertainty_map$SoilGrid.pH)+ abs(uncertainty_map$SoilGrid.Nt)+ abs(uncertainty_map$SoilGrid.Corg))/3
+Prediction_ERROR_ABS<-(abs(uncertainty_map$pH)+ abs(uncertainty_map$Nt)+ abs(uncertainty_map$Corg))/3
 
 residuals <-stack(Prediction_ERROR_ABS, SG_ERROR_ABS)
 names(residuals)<-c("ERROR_Prediction","ERROR_SG")
@@ -1115,7 +1114,7 @@ ensemble <- function(predvalues, serrors, basemap = 1){
 
 predictions <- list()
 for (i in 1:(nlayers(prediction_map)/2)) {
-  x <- stack(prediction_map[[i+6]],prediction_map[[i]])
+  x <- stack(prediction_map[[i+3]],prediction_map[[i]])
 
   # Run the comparison model
   start <- Sys.time()
@@ -1124,9 +1123,8 @@ for (i in 1:(nlayers(prediction_map)/2)) {
   
 }
 
-# 10.7 Export the evaluation of SG =============================================
-r_stack <- stack(predictions[[1]][[3]], predictions[[2]][[3]],predictions[[3]][[3]],predictions[[4]][[3]],
-                      predictions[[5]][[3]],predictions[[6]][[3]])
+# 10.8 Export the evaluation of SG =============================================
+r_stack <- stack(predictions[[1]][[3]], predictions[[2]][[3]],predictions[[3]][[3]])
 
 r_stack[is.na(r_stack)] <- 1 
 model_raster <- calc(r_stack, fun = function(x) {
@@ -1141,7 +1139,7 @@ save(model_raster, file= paste0("./export/save/",depth,"_model_selection.RData")
 
 rm(list = ls(all.names = TRUE))
 
-# 10.8 Plot the models maps  ===================================================
+# 10.9 Plot the models maps  ===================================================
 load("./export/save/top_soil_model_selection.RData")
 top.soil <- model_raster
 load("./export/save/sub_soil_model_selection.RData")
