@@ -722,7 +722,7 @@ NDWI = (Green - NIR) / (Green + NIR)
 <span id="cb8-5"><a href="soil-depth-mapping.html#cb8-5" tabindex="-1"></a>  <span class="fu">xlim</span>(<span class="dv">0</span>, <span class="dv">100</span>) <span class="sc">+</span></span>
 <span id="cb8-6"><a href="soil-depth-mapping.html#cb8-6" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
 <span id="cb8-7"><a href="soil-depth-mapping.html#cb8-7" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">plot.title =</span> <span class="fu">element_text</span>(<span class="at">hjust =</span> <span class="fl">0.5</span>)) </span></code></pre></div>
-<p><img src="_main_files/figure-html/plot%20hist-1.png" width="672" /></p>
+<p><img src="main_files/figure-html/plot%20hist-1.png" width="672" /></p>
 <div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="soil-depth-mapping.html#cb9-1" tabindex="-1"></a><span class="co"># 01.3 Transform and plot the data =============================================</span></span>
 <span id="cb9-2"><a href="soil-depth-mapping.html#cb9-2" tabindex="-1"></a></span>
 <span id="cb9-3"><a href="soil-depth-mapping.html#cb9-3" tabindex="-1"></a>depth<span class="sc">$</span>sqrt <span class="ot">&lt;-</span> <span class="fu">sqrt</span>(depth<span class="sc">$</span>Depth)</span>
@@ -734,7 +734,7 @@ NDWI = (Green - NIR) / (Green + NIR)
 <span id="cb9-9"><a href="soil-depth-mapping.html#cb9-9" tabindex="-1"></a>  <span class="fu">xlim</span>(<span class="dv">0</span>, <span class="dv">11</span>) <span class="sc">+</span></span>
 <span id="cb9-10"><a href="soil-depth-mapping.html#cb9-10" tabindex="-1"></a>  <span class="fu">theme_minimal</span>() <span class="sc">+</span></span>
 <span id="cb9-11"><a href="soil-depth-mapping.html#cb9-11" tabindex="-1"></a>  <span class="fu">theme</span>(<span class="at">plot.title =</span> <span class="fu">element_text</span>(<span class="at">hjust =</span> <span class="fl">0.5</span>)) </span></code></pre></div>
-<p><img src="_main_files/figure-html/plot%20hist-2.png" width="672" /></p>
+<p><img src="main_files/figure-html/plot%20hist-2.png" width="672" /></p>
 <div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="soil-depth-mapping.html#cb10-1" tabindex="-1"></a><span class="co"># 01.4 Plot the depth spatial information ======================================</span></span>
 <span id="cb10-2"><a href="soil-depth-mapping.html#cb10-2" tabindex="-1"></a></span>
 <span id="cb10-3"><a href="soil-depth-mapping.html#cb10-3" tabindex="-1"></a><span class="co"># Create a spatial dataframe</span></span>
@@ -814,7 +814,7 @@ NDWI = (Green - NIR) / (Green + NIR)
 <span id="cb11-68"><a href="soil-depth-mapping.html#cb11-68" tabindex="-1"></a>reduce <span class="ot">&lt;-</span> <span class="fu">aggregate</span>(covariates, <span class="at">fact=</span><span class="dv">10</span>, <span class="at">fun=</span>mean)</span>
 <span id="cb11-69"><a href="soil-depth-mapping.html#cb11-69" tabindex="-1"></a></span>
 <span id="cb11-70"><a href="soil-depth-mapping.html#cb11-70" tabindex="-1"></a><span class="fu">plot</span>(reduce)</span></code></pre></div>
-<p><img src="_main_files/figure-html/rast%20stack%20plot-1.png" width="672" /></p>
+<p><img src="main_files/figure-html/rast%20stack%20plot-1.png" width="672" /></p>
 <p><span class="math inline">\(\\[0.5cm]\)</span></p>
 <div class="sourceCode" id="cb12"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb12-1"><a href="soil-depth-mapping.html#cb12-1" tabindex="-1"></a><span class="co"># 01.7 Extract the values ======================================================</span></span>
 <span id="cb12-2"><a href="soil-depth-mapping.html#cb12-2" tabindex="-1"></a></span>
@@ -886,7 +886,7 @@ NDWI = (Green - NIR) / (Green + NIR)
 <span id="cb15-6"><a href="soil-depth-mapping.html#cb15-6" tabindex="-1"></a>         <span class="at">tl.col =</span> <span class="st">&quot;black&quot;</span>, <span class="at">tl.srt =</span> <span class="dv">45</span>, <span class="co"># Text label color and rotation</span></span>
 <span id="cb15-7"><a href="soil-depth-mapping.html#cb15-7" tabindex="-1"></a>         <span class="at">number.cex =</span> <span class="fl">0.7</span>, <span class="co"># Size of the text labels</span></span>
 <span id="cb15-8"><a href="soil-depth-mapping.html#cb15-8" tabindex="-1"></a>         <span class="at">cl.cex =</span> <span class="fl">0.7</span>) <span class="co"># Size of the color legend text</span></span></code></pre></div>
-<p><img src="_main_files/figure-html/covariates%20correlation-1.png" width="1920" /></p>
+<p><img src="main_files/figure-html/covariates%20correlation-1.png" width="1920" /></p>
 <div class="sourceCode" id="cb16"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb16-1"><a href="soil-depth-mapping.html#cb16-1" tabindex="-1"></a>         <span class="co">#cl.lim = c(-1, 1)) # Color legend limits</span></span></code></pre></div>
 <p>Regarding the correlation plot, the Landsat 5 bands and land surface temperature layers have correlation index over 0.75, as some transformed layers based on DEM (curvature, slope ,aspect …) and the solar radiation with wind.</p>
 <div class="sourceCode" id="cb17"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb17-1"><a href="soil-depth-mapping.html#cb17-1" tabindex="-1"></a><span class="co"># 02.4 Export and save data ====================================================</span></span>
@@ -1053,7 +1053,7 @@ NDWI = (Green - NIR) / (Green + NIR)
 <span id="cb20-15"><a href="soil-depth-mapping.html#cb20-15" tabindex="-1"></a><span class="co"># Combine R2 and RMSE in one plot</span></span>
 <span id="cb20-16"><a href="soil-depth-mapping.html#cb20-16" tabindex="-1"></a>combined_plot <span class="ot">&lt;-</span> <span class="fu">wrap_plots</span>(gg1, gg2, <span class="at">ncol =</span> <span class="dv">2</span>)</span>
 <span id="cb20-17"><a href="soil-depth-mapping.html#cb20-17" tabindex="-1"></a><span class="fu">plot</span>(combined_plot)</span></code></pre></div>
-<p><img src="_main_files/figure-html/script%20paramter%20plot_2-1.png" width="1920" /></p>
+<p><img src="main_files/figure-html/script%20paramter%20plot_2-1.png" width="1920" /></p>
 <div class="sourceCode" id="cb21"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb21-1"><a href="soil-depth-mapping.html#cb21-1" tabindex="-1"></a><span class="co"># Save and export the plot</span></span>
 <span id="cb21-2"><a href="soil-depth-mapping.html#cb21-2" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;./export/Optimisation of the model.pdf&quot;</span>, combined_plot, <span class="at">width =</span> <span class="dv">20</span>, <span class="at">height =</span> <span class="dv">10</span>)</span>
 <span id="cb21-3"><a href="soil-depth-mapping.html#cb21-3" tabindex="-1"></a><span class="fu">ggsave</span>(<span class="st">&quot;./export/Optimisation of the model.png&quot;</span>, combined_plot, <span class="at">width =</span> <span class="dv">20</span>, <span class="at">height =</span> <span class="dv">10</span>)</span></code></pre></div>
@@ -1102,7 +1102,7 @@ NDWI = (Green - NIR) / (Green + NIR)
 <span id="cb24-18"><a href="soil-depth-mapping.html#cb24-18" tabindex="-1"></a>  <span class="fu">ggtitle</span>(<span class="st">&quot;Variable Importance from QRF Model (%)&quot;</span>)</span>
 <span id="cb24-19"><a href="soil-depth-mapping.html#cb24-19" tabindex="-1"></a></span>
 <span id="cb24-20"><a href="soil-depth-mapping.html#cb24-20" tabindex="-1"></a>gg1</span></code></pre></div>
-<p><img src="_main_files/figure-html/script%20covariate%20importance_2-1.png" width="672" /></p>
+<p><img src="main_files/figure-html/script%20covariate%20importance_2-1.png" width="672" /></p>
 </div>
 <div id="model-evaluation-2" class="section level3 hasAnchor" number="8.2.5">
 <h3><span class="header-section-number">8.2.5</span> Model evaluation<a href="soil-depth-mapping.html#model-evaluation-2" class="anchor-section" aria-label="Anchor link to header"></a></h3>
