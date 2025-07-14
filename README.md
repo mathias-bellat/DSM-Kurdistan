@@ -13,7 +13,7 @@ data required to understand the entire process.
 
 The code (R, Python and javascript) are followings the MIT licence while the rest of the data is following the CC BY-SA licence.
 
-<img src="docs/images/Figure_02.png" align="center" width="75%" height="150%"/>
+<img src="docs/images/Figure_02.png" align="center" />
 
 **Authors:**
 
