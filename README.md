@@ -9,7 +9,7 @@ It contains all the pre-processing steps of the subsequent stages and the data r
 
 The code (R, Python and javascript) are followings the MIT licence while the rest of the data is following the CC BY-SA licence.
 
-<img src="docs/images/Figure_02.jpg" align="center" />
+<img src="docs/images/Figure_02.png" align="center" />
 
 **Authors:**
 
