@@ -4,7 +4,7 @@
 # Author: Mathias Bellat                                           #
 # Affiliation : Tubingen University                                #
 # Creation date : 01/08/2024                                       #
-# E-mail: mathias.bellat@uni-tuebingen.de                          #
+# E-mail: mathias.bellat@uni-tubingen.de                           #
 ####################################################################
 
 # 00 Preparation ###############################################################

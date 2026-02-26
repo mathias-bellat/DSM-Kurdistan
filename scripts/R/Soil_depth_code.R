@@ -5,7 +5,7 @@
 # Author: Mathias Bellat                                           #
 # Affiliation : Tubingen University                                #
 # Creation date : 17/06/2024                                       #
-# E-mail: mathias.bellat@uni-tuebingen.de                          #
+# E-mail: mathias.bellat@uni-tubingen.de                           #
 ####################################################################
 
 
@@ -27,8 +27,8 @@ rm(list = ls(all.names = TRUE))
 install.packages("pacman")        #Install and load the "pacman" package (allow easier download of packages)
 library(pacman)
 
-pacman::p_load(ggplot2, terra, mapview, sf, raster, dplyr, corrplot, viridis, rsample, caret, parsnip, tmap, 
-               DescTools, patchwork, quantregForest, ncdf4, wesanderson, cblindplot, grid, gridExtra, ggspatial, cowplot)
+pacman::p_load(ggplot2, terra, mapview, sf, dplyr, corrplot, viridis, rsample, caret, parsnip, tmap, geodata, googledrive, ggnewscale,
+               parallel, doParallel, cli, patchwork, quantregForest, ncdf4, wesanderson, cblindplot, grid, gridExtra, ggspatial, cowplot)
 
 # 0.3 Show session infos =======================================================
 
@@ -76,22 +76,79 @@ sp_df <- st_as_sf(depth, coords = c("X", "Y"), crs = 32638)
 # Plot the values of depth regarding the elevation
 mapview(sp_df, zcol = "Depth", legend =TRUE, map.types ="Esri.WorldShadedRelief") 
 
-# 01.5 Import covariates raster ================================================
 
-Landsat <- raster::stack(list.files("./data/Landsat/", full.names = TRUE))
-names(Landsat)
+# 02 Prepare the covariates ####################################################
 
-Terrain <- raster::stack(list.files("./data/Terrain/", full.names = TRUE))
-names(Terrain)
+# 02.1 Import background layers ================================================
+DEM <- rast("../07 - DSM/data/Others/DEM.tif")
 
-Others <- raster::stack(list.files("./data/Others/", full.names = TRUE))
-names(Others)
+# 02.2 Import from Google Drive ================================================
+drive_auth()
+files <- drive_ls()
 
-LST <- raster::stack(list.files("./data/LST/", full.names = TRUE))
-names(LST)
+# Import Landsat 5
+file <- files[grepl("Landsat5", files$name), ]
+for (i in 1:nrow(file)) {
+  drive_download(
+    as_id(file$id[[i]]),
+    path = paste0("./data/Landsat/Raw_",file[[1]][[i]]), 
+    overwrite = TRUE)
+}
 
-DSM_cov_name <- read.table("./data/Covariates_names_DSM.txt")
+# 02.3 Resize NPP and Landsat data =============================================
+NPP_raw <- list.files("./data/NPP", pattern = "*_raw", full.names = TRUE)
+NPP_raw  <- rast(NPP_raw)
 
+for (i in 1:nlyr(NPP_raw)) {
+  r <-resample(NPP_raw[[i]], DEM, method = "bilinear")
+  r <- crop(r, DEM)
+  names(r) <- gsub("_raw", "", names(r))
+  writeRaster(r, paste0("./data/NPP/",names(r),".tif"), overwrite=T)
+}
+
+all_files <- list.files("./data/NPP", full.names = TRUE)
+NPP <- rast(all_files[!grepl("raw", all_files)])
+
+Landsat <- rast(list.files("./data/Landsat/",  pattern = "*Raw", full.names = TRUE))
+Landsat_names <- list.files("./data/Landsat/",pattern = "*Raw", full.names = FALSE)
+
+patterns  <- c("B2", "B3", "B4", "B7")
+replacers <- c("blue", "green", "red", "NIR")
+
+for (i in seq_along(patterns)) {
+  Landsat_names <- gsub(patterns[i], replacers[i], Landsat_names)
+}
+names(Landsat) <- gsub("\\.tif$", "", Landsat_names)
+names(Landsat) <- gsub("Raw_", "", names(Landsat))
+names(Landsat) <- gsub("_2010_MedianComposite", "", names(Landsat))
+
+Landsat$Landsat5_NDWI <- (Landsat$Landsat5_green - Landsat$Landsat5_NIR)/(Landsat$Landsat5_green + Landsat$Landsat5_NIR)
+Landsat$Landsat5_NDVI <- (Landsat$Landsat5_NIR - Landsat$Landsat5_red)/(Landsat$Landsat5_NIR +  Landsat$Landsat5_red)
+
+for (i in 1:nlyr(Landsat)) {
+  r <-resample(Landsat[[i]], DEM, method = "bilinear")
+  r <- crop(r, DEM)
+  writeRaster(r, paste0("./data/Landsat/",names(r),".tif"), overwrite=T)
+}
+
+all_files <- list.files("./data/Landsat/",  full.names = TRUE)
+Landsat <- rast(all_files[!grepl("Raw", all_files)])
+
+# 02.4 Import other covariates  ================================================
+Others <- list.files("../07 - DSM/data/Others/", full.names = TRUE)
+Others <- rast(Others[c(4,6,8,10,11,12,13)])
+
+Others_names <- list.files("../07 - DSM/data/Others/", full.names = FALSE)
+Others_names <- Others_names[c(4,6,8,10,11,12,13)]
+Others_names <- gsub("\\.tif$", "", Others_names)
+
+names(Others) <- Others_names
+
+Terrain <- list.files("../07 - DSM/SAGA/", pattern = "*sg-grd-z" , full.names = TRUE)
+Terrain <- rast(Terrain[c(1,6,12,16,17,20,22,24,29)])
+names(Terrain)[names(Terrain) == "DEM [no sinks] [Smoothed]"] <- "DEM"
+
+DSM_cov_name <- read.table("../07 - DSM/data/Covariates_names_DSM.txt")
 
 df_names <- data.frame()
 for (i in 1:length(names(Terrain))) {
@@ -99,7 +156,7 @@ for (i in 1:length(names(Terrain))) {
   if (col_name %in% DSM_cov_name$V2) {
     transformed_name <- DSM_cov_name$V1[DSM_cov_name$V2 == col_name]
   } else {
-    transformed_name <- paste0("TE.26")
+    transformed_name <- paste0("TE.25")
   }
   df_names[i,1] <- transformed_name
   df_names[i,2] <- names(Terrain)[i]
@@ -113,10 +170,10 @@ for (i in 1:length(names(Landsat))) {
 }
 
 t <- nrow(df_names)
-for (i in 1:length(names(LST))) {
-  c <- paste0("LST.",i)
+for (i in 1:length(names(NPP))) {
+  c <- paste0("NPP.",i)
   df_names[i+t,1] <- c
-  df_names[i+t,2] <- names(LST)[i]
+  df_names[i+t,2] <- names(NPP)[i]
 }
 
 t <- nrow(df_names)
@@ -125,7 +182,7 @@ for (i in 1:length(names(Others))) {
   if (col_name %in% DSM_cov_name$V2) {
     transformed_name <- DSM_cov_name$V1[DSM_cov_name$V2 == col_name]
   } else {
-    transformed_name <- "OT.10"  #Only one new variable
+    transformed_name <- "OT.10"
   }
   df_names[i+t,1] <- transformed_name
   df_names[i+t,2] <- names(Others)[i]
@@ -134,32 +191,25 @@ for (i in 1:length(names(Others))) {
 write.table(df_names,"./data/Covariates_names_soil_depth.txt")
 all_cov_name <- rbind(DSM_cov_name, df_names)
 all_cov_name <- distinct(all_cov_name)
-x <- raster::stack(Terrain, Landsat, LST, Others)
+x <- c(Terrain, Landsat, NPP, Others)
 names(x) <- df_names[,1]
-x <- rast(x)
 
-terra::writeRaster(x, "./data/Stack_layers_soil_depth.tif", overwrite = TRUE)
-covariates <- stack("./data/Stack_layers_soil_depth.tif")
+plot(x)
 
-# 01.6 Plot the covariates maps ================================================
-
-reduce <- aggregate(covariates, fact=10, fun=mean)
-
-plot(reduce)
-
-# 01.7 Extract the values ======================================================
+# 02.5 Extract the values ======================================================
 
 # Extract the values of each band for the sampling location
-df_cov <- raster::extract(covariates, sp_df, method='simple')
+df_cov <- extract(x, sp_df, method='simple')
 
-# 01.8 Save the data ===========================================================
+# 02.6 Save the data ===========================================================
 
 # Create a csv out of it
-write.csv(data.frame(df_cov), "./data/df_cov_soil_depth.csv")
+writeRaster(x, "./data/Stack_layers_soil_depth.tif", overwrite = TRUE)
+write.csv(data.frame(df_cov[,-c(1)]), "./data/df_cov_soil_depth.csv")
 
-# 02 Check the data ############################################################
+# 03 Check the data ############################################################
 
-# 02.1 Import the data and merge ===============================================
+# 03.1 Import the data and merge ===============================================
 Covdfgis    <- read.csv("./data/df_cov_soil_depth.csv")
 ID    <- 1:nrow(Covdfgis)
 SoilCov <- cbind(ID, depth, Covdfgis[,-c(1)])
@@ -168,12 +218,12 @@ SoilCov <- cbind(ID, depth, Covdfgis[,-c(1)])
 names(SoilCov)
 str(SoilCov)
 
-# 02.2 Check and prepare the data ==============================================
+# 03.2 Check and prepare the data ==============================================
 
 # Prepare data for ML modelling
-SoilCovML <- SoilCov[,-c(1:7)]
+SoilCovML <- SoilCov[,-c(1:6)]
 
-# 02.3 Plot and export the correlation matrix ==================================
+# 03.3 Plot and export the correlation matrix ==================================
 pdf("./export/Correlation.pdf",    # File name
     width = 20, height = 20,  # Width and height in inches
     bg = "white",          # Background color
@@ -181,7 +231,7 @@ pdf("./export/Correlation.pdf",    # File name
 
 
 # Correlation of the data
-corrplot(cor(SoilCovML),  method = "color", col = viridis(200), 
+corrplot(cor(SoilCovML[,-c(20:21)]),  method = "color", col = viridis(200), 
          type = "upper", 
          addCoef.col = "black", # Add coefficient of correlation
          tl.col = "black", tl.srt = 45, # Text label color and rotation
@@ -191,14 +241,12 @@ corrplot(cor(SoilCovML),  method = "color", col = viridis(200),
 
 dev.off()
 
-# 02.4 Export and save data ====================================================
-save(covariates, SoilCov, file = "./export/save/Pre_process_soil_depth.RData")
-rm(list = ls())
+save(SoilCov, file = "./export/save/Pre_process_soil_depth.RData")
+rm(list=setdiff(ls(), c("SoilCov")))
+# 04 Tune the model ############################################################
+covariates <- rast("./data/Stack_layers_soil_depth.tif")
 
-# 03 Tune the model ############################################################
-load(file = "./export/save/Pre_process_soil_depth.RData")
-
-# 03.1 Create the train and test set ===========================================
+# 04.1 Prepare the data set and the models =====================================
 
 #R Remove the site name and x, y columns
 df_soilCov <- SoilCov[,c(1,5:length(SoilCov))]
@@ -206,289 +254,205 @@ df_soilCov <- SoilCov[,c(1,5:length(SoilCov))]
 # Set a random seed
 set.seed(1070)
 
-# preprocess the layers
-preproc <- preProcess(df_soilCov[,4:length(df_soilCov)], method=c("range"))
-df_soilCovTrans <- predict(preproc, df_soilCov[,4:length(df_soilCov)])
-df_soilCovTrans <- cbind(df_soilCovTrans, df_soilCov[,1:3])
+# Remove NZV (if any)
+nzv <- nearZeroVar(df_soilCov[,4:length(df_soilCov)], saveMetrics = TRUE)
+rownames(nzv)[nzv$nzv == TRUE]
 
-# Create a 80% split
+# 04.2 Create the model train controls with cross-validation  ==================
+source("../07 - DSM/script/QRF_models.R")
+
 set.seed(1070)
-df_soil <- initial_split(df_soilCovTrans, prop = 0.8, strata = ID)
-trainData <- training(df_soil)
-testData <- testing(df_soil)
-
-# Implement the index
-row.names(testData) <- testData$ID
-row.names(trainData) <- trainData$ID
-
-# Create the splits
-X_train <- trainData[,-c(27:29)]
-y_train <- trainData[,c(28)]
-y_train_sqrt <- trainData[,c(29)]
-X_test <- testData[,-c(27:29)]
-y_test <- testData[,c(28)]
-y_test_sqrt <- testData[,c(29)]
-
-# 03.2 Create the model train controls with cross-validation  ==================
 TrainControl <- trainControl(method="repeatedcv", 10, 3, allowParallel = TRUE, savePredictions=TRUE, verboseIter = TRUE)
 
-# 03.3 Set the grid for mtry and nodesize ======================================
+data <- df_soilCov[,3:length(df_soilCov)]
 
-tuneGrid <- expand.grid(mtry = c(1, 3, 5, 7, 10, 12, 15))
-nodesize_values <- c(3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+# 04.2 Run the model ===========================================================
 
-all_results <- list()
-set.seed(1070)
-
-# 03.4 Run the model tunning ===================================================
-# Loop over different nodesize values and different mtry
-for (nodesize in nodesize_values) {
-  start_time <- Sys.time()
-  qrf_model <- train(x = X_train, y = y_train_sqrt,
-                  method = "qrf",
-                  trControl = TrainControl,
-                  tuneGrid = tuneGrid,
-                  ntree = 500,     # Number of trees
-                  metric = "RMSE",      # Specify the metric you want to optimize
-                  nodesize = nodesize     # Minimum node size
-)
-  end_time <- Sys.time()
-  print(end_time - start_time)
-  
-# Store the results with the corresponding nodesize
-results <- qrf_model$results
-results$nodesize <- nodesize  # Add the nodesize information
-all_results[[as.character(nodesize)]] <- results
-}
-
-final_results <- do.call(rbind, all_results)
-
-# View the combined results for all mtry and nodesize combinations
-print(final_results)
-
-# 03.5 Plot the different optimization =========================================
-
-gg1 <- ggplot(final_results, aes(x = mtry, y = Rsquared, color = as.factor(nodesize))) +
-  geom_line() +
-  geom_point() +
-  labs(x = "mtry", y = "R²", color = "nodesize") +
-  theme_minimal()
-
-gg2 <- ggplot(final_results, aes(x = mtry, y = RMSE, color = as.factor(nodesize))) +
-  geom_line() +
-  geom_point() +
-  labs(x = "mtry", y = expression("RMSE (" *cm^0.5* ")"), color = "nodesize") +
-  theme_minimal()
-
-
-# Combine R2 and RMSE in one plot
-combined_plot <- wrap_plots(gg1, gg2, ncol = 2)
-plot(combined_plot)
-
-# Save and export the plot
-ggsave("./export/Optimisation of the model.pdf", combined_plot, width = 20, height = 10)
-ggsave("./export/Optimisation of the model.png", combined_plot, width = 20, height = 10)
-
-# 04.1 Produce the final model #################################################
-
-nodesize <- 6
-mtry  <- expand.grid(mtry = 1)
-
-set.seed(1070)
-qrf_final <- train(x = X_train, y = y_train_sqrt,
-                   method = "qrf",
+start_time <- Sys.time()
+qrf_model <- train(sqrt ~ ., data,
+                   method = qrf_caret, 
                    trControl = TrainControl,
-                   tuneGrid = mtry,
-                   ntree = 500,     # Number of trees
-                   metric = "RMSE",      # Specify the metric you want to optimize
-                   nodesize = nodesize )
+                   metric = "RMSE", 
+                   tuneGrid = expand.grid(mtry = c(1:ncol(data-1)), nodesize = seq(1,21, by = 5)),
+                   ntree = 500)
+
+end_time <- Sys.time()
+print(end_time - start_time)
+  
+# 04.3 Compute metrics =====================================================
+
+best_params <- qrf_model$bestTune
+
+pred_best <- qrf_model$pred %>%
+  dplyr::filter(
+    mtry == best_params$mtry,
+    nodesize == best_params$nodesize
+  )
+
+pred_best$pred <- as.numeric(pred_best$pred)
+
+metrics_by_best <- pred_best %>%
+  group_by(Resample) %>%
+  summarise(
+    ME   = mean(pred^2 - obs^2, na.rm = TRUE),
+    RMSE = sqrt(mean((pred^2 - obs^2)^2, na.rm = TRUE)),
+    R2   = cor(pred^2, obs^2, use = "complete.obs")^2,
+    PICP = mean(obs^2 >= pred.quantile..0.05^2 & obs^2 <= pred.quantile..0.95^2, na.rm = TRUE))
+
+metrics_df <- as.data.frame(metrics_by_best)
+
+metrics_summary <- metrics_df %>%
+  summarise(
+    ME_mean   = mean(ME),
+    RMSE_mean = mean(RMSE),
+    R2_mean   = mean(R2),
+    PICP_mean = mean(PICP),
+    ME_sd     = sd(ME),
+    RMSE_sd   = sd(RMSE),
+    R2_sd     = sd(R2),
+    PICP_sd   = sd(PICP)
+  )
+
+print(metrics_summary)
 
 
-results_qrf <- qrf_final$results
+png("./export/Models_tuning_parameters_for_soil_depth.png",    
+    width = 600, height = 500)
+plot(qrf_model, main = "QRF tuning parameters for soil depth")
+dev.off()
 
-# View R² and RMSE values for final model
-print(results_qrf[, c("mtry", "RMSE", "Rsquared")])
+pdf("./export/Models_tuning_parameters_for_soil_depth.pdf",    
+    width = 6, height = 5, 
+    bg = "white") 
+plot(qrf_model, main = "QRF tuning parameters for soil depth")
+dev.off()
 
-final_model <- qrf_final$finalModel
+# 04.4 Plot variable importance ================================================
 
-# 04.2 Show covariates importance ==============================================
-
-importance_df <- as.data.frame(varImp(final_model))
-
-# Convert row names (variables) to a column for ggplot
-importance_df$scale <- (importance_df$Overall/sum(importance_df$Overall)*100)
+var_importance <- varImp(qrf_model, scale = TRUE)
+importance_df <- as.data.frame(var_importance$importance)
 importance_df$Variable <- rownames(importance_df)
 
-# Plot using ggplot2
-gg1 <- ggplot(importance_df, aes(x = reorder(Variable, scale), y = scale)) +
-  geom_bar(stat = "identity", fill = "lightblue") +
-  coord_flip() +
-  xlab("Covariates") +
-  ylab("Importance scaled (%)") +
-  ggtitle("Variable Importance from QRF Model")
+AvgVarImportance <- importance_df %>%
+  group_by(Variable) %>%
+  summarise(importance_df = mean(Overall, na.rm = TRUE)) %>%
+  arrange(desc(importance_df))
 
-gg1
-
-# Save and export the plot
-ggsave("./export/Variables importance.png", gg1, width = 10, height = 8)
-ggsave("./export/Variables importance.pdf", gg1, width = 10, height = 8)
+# Select top 20 variables
+Top20Var <- AvgVarImportance %>%
+  top_n(20, wt = importance_df)
 
 
-# 04.3 Predict the test set ====================================================
-predictions <- predict(final_model,  X_test)
+AllVarImportanceTop20 <- AvgVarImportance %>%
+  filter(Variable %in% Top20Var$Variable)
 
-# 04.4 Get the metrics  ========================================================
-metrics <- postResample(predictions[,2], y_test_sqrt)
-ccc <- CCC(y_test_sqrt, predictions[,2])
-PICP <- (y_test_sqrt >= predictions[,1]) & (y_test_sqrt <= predictions[,3])
-PICP <- mean(PICP)*100
+colnames(AllVarImportanceTop20) <- c("Covariable", "Importance")
 
-Final_stats <- as.data.frame(t(c(metrics, ccc$rho.c$est, PICP)))
-colnames(Final_stats) <- c("RMSE", "R²", "MAE", "CCC", "PICP")
+VarPlot <- ggplot(AllVarImportanceTop20, aes(x = reorder(Covariable, Importance), y = Importance)) +
+  geom_bar(stat = "identity", position = "dodge", fill = "lightblue") +  
+  coord_flip() +  
+  labs(title = "Top 20 covariates influence for soil depth", 
+       x = "Covariates", 
+       y = "Importance") +
+  theme_minimal() +
+  theme(plot.title = element_text(hjust = 0.5))
 
-# Print the metrics
-print(Final_stats)
 
-# Write it
-write.table(Final_stats, file="./export/save/Final_stats.txt", row.names = FALSE)
+png("./export/Variables_importance_for_soil_depth.png",    
+    width = 600, height = 500)
+plot(VarPlot)
+dev.off()
+
+pdf("./export/Variables_importance_for_soil_depth.pdf",    
+    width = 6, height = 5, 
+    bg = "white") 
+plot(VarPlot)
+dev.off()
+
+write.csv(data.frame(metrics_summary), "./export/Models_metrics_soil_depth.csv")
+write.csv(AllVarImportanceTop20, "./export/Variable_importance_soil_depth.csv")
 
 # 04.5 Save the model and train and test sets ==================================
-save(trainData, testData, final_model, qrf_model, all_results, qrf_final, file = "./export/save/Model_soil_depth.RData")
+save(qrf_model, file = "./export/save/Model_soil_depth.RData")
 rm(list = ls())
 
 # 05 Predict the map ###########################################################
 # 05.1 Import the previous data ================================================
 load(file = "./export/save/Model_soil_depth.RData")
-stack_raster <- stack("./data/Stack_layers_soil_depth.tif")
-cov <- read.csv("./data/df_cov_soil_depth.csv")
-cov <- cov[,-1]
-cov[] <- lapply(cov , as.numeric)
-  
-# 05.2 Normalise the values from the rasters ===================================
-process_layer <- function(layer) {
-  # Convert in numeric 
-  layer <- as.numeric(layer)
-  # Replace the NAs by median
-  median_value <- median(layer, na.rm = TRUE)
-  layer[is.na(layer)] <- median_value
-  return(layer)
+covariates <- rast("./data/Stack_layers_soil_depth.tif")
+
+cov_df <- as.data.frame(covariates, xy = TRUE)
+cov_df[is.infinite(as.matrix(cov_df))] <- NA
+cov_df <- na.omit(cov_df)
+cov_names <- names(covariates)
+
+n_blocks <- 10
+cov_df$block <- cut(1:nrow(cov_df), breaks = n_blocks, labels = FALSE)
+cov_df_blocks <- split(cov_df, cov_df$block)
+
+predicted_blocks <- list()
+
+cli_progress_bar(
+  format = "Prediction depth {cli::pb_bar} {cli::pb_percent} [{cli::pb_current}/{cli::pb_total}] | \ ETA: {cli::pb_eta} - Time elapsed: {cli::pb_elapsed_clock}",
+  total = n_blocks, 
+  clear = FALSE)
+
+cl <- makeCluster(6)
+registerDoParallel(cl)
+    
+# Create a loop for blocks
+for (i in 1:10) {
+  block <- cov_df_blocks[[i]][,cov_names]
+  prediction <- predict(qrf_model$finalModel, newdata = block, what = c(0.05, 0.5, 0.95))^2
+  predicted_df <- cov_df_blocks[[i]][,c(1:2)]
+  predicted_df$median <- prediction[,2]
+  predicted_df$min <- prediction[,1]
+  predicted_df$max <- prediction[,3]
+  predicted_blocks[[i]] <- predicted_df
+  cli_progress_update()
 }
+cli_progress_done()
 
-scaling_params <- lapply(1:ncol(cov), function(i) {
-  list(min = min(cov[[i]], na.rm = TRUE), max = max(cov[[i]], na.rm = TRUE))
-})
+predicted_rast <- do.call(rbind,predicted_blocks)
+predicted_rast <- rast(predicted_rast, type ="xyz")
+crs(predicted_rast) <- crs(rast)
+predicted_rast$uncertainty <- (predicted_rast$max - predicted_rast$min) /predicted_rast$median
 
-scale_layer <- function(layer, min_val, max_val) {
-  (layer - min_val) / (max_val - min_val)
-}
-
-stack_scaled <- stack() 
-
-# Apply transformation
-for (i in 1:nlayers(raster_stack)) {
-  min_val <- scaling_params[[i]]$min
-  max_val <- scaling_params[[i]]$max
-  
-  # Normalised the layer
-  layer_processed <- calc(raster_stack[[i]], process_layer)
-  layer_scaled <- calc(layer_processed, function(x) scale_layer(x, min_val, max_val))
-  stack_scaled <- addLayer(stack_scaled, layer_scaled)
-  cat(round((i/nlayers(raster_stack))*100, 1),"% \n")
-}
-
-stack_scaled <- rast(stack_scaled)
-sum(is.na(values(stack_scaled)))
-names(stack_scaled) <- names(raster_stack)
-terra::writeRaster(stack_scaled, "./export/Soil_depth/Stack_raster_normalised_soil_depth.tif", overwrite = TRUE)
-
-# 05.3 Prediction map for soil depth ===========================================
-rm(list = ls(all.names = TRUE))
-load("./export/save/Model_soil_depth.RData")
-raster_stack_normalised <- stack("./export/Soil_depth/Stack_raster_normalised_soil_depth.tif")
-
-# Divide in block for allowing the computer to run it
-block_info <- blockSize(raster_stack_normalised )
-
-# Create an empty raster for storing predicted values
-predicted_raster <- raster_stack_normalised [[1]]  # Use the first layer as a template
-predicted_raster <- writeStart(predicted_raster, "./export/Prediction_depth_sqrt.tif", overwrite = TRUE)
-
-# Loop through each block of the raster stack
-
-for (i in 1:block_info$n) {
-  # Read block of raster data
-  start_time <- proc.time()
-  block <- getValuesBlock(raster_stack_normalised , row = block_info$row[i], nrows = block_info$nrows[i])
-  block <- as.data.frame(block)
-  
-  # Process the block 
-  predicted_block <- predict(final_model, block,  what = c(0.05, 0.5, 0.95))  
-  
-  # Write the predicted block to the output raster
-  predicted_raster <- writeValues(predicted_raster, predicted_block[,2], block_info$row[i])
-  end_time <- proc.time()
-  print(end_time - start_time)
-  print(i)
-}
-
-# Close the creation of the raster
-predicted_raster <- writeStop(predicted_raster)
-
-# Rescale the raster and export it
-predicted_raster_sqrt <- (predicted_raster)^2
-writeRaster(predicted_raster_sqrt,"./export/Prediction_depth.tif", format = "GTiff",overwrite=T)
-
-# 05.4 Uncertainty map of soil depth ===========================================
-
-# Create an empty raster for storing predicted values
-uncertainty_raster <- raster_stack_normalised [[1]]  # Use the first layer as a template
-uncertainty_raster <- writeStart(uncertainty_raster, "./export/Uncertainty_depth_sqrt.tif", overwrite = TRUE)
-
-# Loop through each block of the raster stack
-
-for (i in 1:block_info$n) {
-  # Read block of raster data
-  start_time <- proc.time()
-  block <- getValuesBlock(raster_stack_normalised, row = block_info$row[i], nrows = block_info$nrows[i])
-  block <- as.data.frame(block)
-  
-  # Process the block 
-  predicted_block <- predict(final_model, block,  what = c(0.05, 0.5, 0.95))  
-  
-  # Write the predicted block to the output raster
-  values <- (predicted_block[,3] - predicted_block[,1]) /predicted_block[,2]
-  uncertainty_raster <- writeValues(uncertainty_raster, values, block_info$row[i])
-  end_time <- proc.time()
-  print(end_time - start_time)
-  print(i)
-}
-
-# Close the creation of the raster 
-uncertainty_raster <- writeStop(uncertainty_raster)
-uncertainty_raster_sqrt <- (uncertainty_raster)^2
-writeRaster(uncertainty_raster_sqrt ,"./export/Uncertainty_depth.tif", format = "GTiff",overwrite=T)
-
-
+writeRaster(predicted_rast, "./export/Prediction_depth.tif", overwrite=TRUE)
+stopCluster(cl)  
+rm(list = ls())
 # 06 Visualisation of the prediction ###########################################
 # 06.1 Plot the depth maps =====================================================
-rm(list = ls())
 load(file = "./export/save/Pre_process_soil_depth.RData")
-predicted_raster <- raster("./export/Prediction_depth.tif")
-uncertainty_raster <- raster("./export/Uncertainty_depth.tif")
-survey <- st_read("./data/Survey_Area.gpkg", layer = "Survey_Area")
-sp_df <- st_as_sf(SoilCov, coords = c("X", "Y"), crs = 32638)
+raster <- rast("./export/Prediction_depth.tif")
+crs(raster) <- "EPSG:32638"
+survey <- st_read("../07 - DSM/data/Survey_Area.gpkg", layer = "Survey_Area")
+sp_df <- st_as_sf(SoilCov, coords = c("X", "Y"), crs = "EPSG:32638")
 
-predicted_raster_resize <- aggregate(predicted_raster, fact=5, fun=mean)
-uncertainty_resize <- aggregate(uncertainty_raster, fact=5, fun=mean)
+summary(raster)
+
+# Remove the NA
+for(i in 1:nlyr(raster)) {
+  name <- names(raster[[i]])
+  raster[[name]] <- focal(raster[[i]], 
+                       w = 3, 
+                       fun = mean, 
+                       na.rm = TRUE, 
+                       na.policy = "only")
+}
+
+summary(raster)
+
+predicted_raster_resize <- aggregate(raster, fact=5, fun=mean)
 
 # Plot continuous values of the map
-mapview(predicted_raster_resize, at = seq(0,100,20), legend = TRUE, layer.name = "Soil depth prediction (cm)",col.regions = wes_palettes$Zissou1Continuous) +
+mapview(predicted_raster_resize$median, at = seq(0,100,20), legend = TRUE, layer.name = "Soil depth prediction (cm)",col.regions = wes_palettes$Zissou1Continuous) +
   mapview(sp_df, zcol = "Depth", at = seq(0,100,20),  legend = TRUE, layer.name = "Soil samples depth (cm)", col.regions = wes_palettes$Zissou1Continuous)
 
-mapview(uncertainty_resize, legend = TRUE)
+mapview(predicted_raster_resize$uncertainty,  at = seq(0,14,2), legend = TRUE)
 
 
-# 06.3 Visualise for colorblind ================================================
+# 06.2 Visualise for colorblind ================================================
 
 wes_palette_hcl <- function(palette_name, n = 7) {
   wes_colors <- wes_palette(palette_name, n = n, type = "continuous")
@@ -499,11 +463,30 @@ wes_palette_hcl <- function(palette_name, n = 7) {
 palette_wes <- rev(wes_palette_hcl("Zissou1", n = 7))
 palette_blue <- colorRampPalette(c("lightblue", "blue", "darkblue"))(7)
 
-# Replace the cvd palette with palette_wes for depht and palette blue for uncertainty
-gg1 <- cblind.plot(uncertainty_resize, cvd = palette_blue)
-gg2 <- cblind.plot(uncertainty_resize, cvd = "deuteranopia")
-gg3 <- cblind.plot(uncertainty_resize, cvd = "tritanopia")
-gg4 <- cblind.plot(uncertainty_resize, cvd = "protanopia")
+# Predictions
+gg1 <- cblind.plot(predicted_raster_resize$median, cvd = palette_wes)
+gg2 <- cblind.plot(predicted_raster_resize$median, cvd = "deuteranopia")
+gg3 <- cblind.plot(predicted_raster_resize$median, cvd = "tritanopia")
+gg4 <- cblind.plot(predicted_raster_resize$median, cvd = "protanopia")
+
+grid <- grid.arrange(
+  arrangeGrob(gg1, bottom = textGrob("Original", gp = gpar(fontsize = 14))),
+  arrangeGrob(gg2, bottom = textGrob("Deuteranopia", gp = gpar(fontsize = 14))),
+  arrangeGrob(gg3, bottom = textGrob("Tritanopia", gp = gpar(fontsize = 14))),
+  arrangeGrob(gg4, bottom = textGrob("Protanopia", gp = gpar(fontsize = 14))),
+  nrow = 2, ncol = 2,
+  top = textGrob("Soil depth prediction for different visions", gp = gpar(fontsize = 16, fontface = "bold")))
+
+ggsave("./export/Visualisation_soil_depth_prediction.png", grid, width = 20, height = 10)
+ggsave("./export/Visualisation_soil_depth_prediction.pdf", grid, width = 20, height = 10)
+
+dev.off()
+
+# Uncertainty
+gg1 <- cblind.plot(predicted_raster_resize$uncertainty, cvd = palette_blue)
+gg2 <- cblind.plot(predicted_raster_resize$uncertainty, cvd = "deuteranopia")
+gg3 <- cblind.plot(predicted_raster_resize$uncertainty, cvd = "tritanopia")
+gg4 <- cblind.plot(predicted_raster_resize$uncertainty, cvd = "protanopia")
 
 grid <- grid.arrange(
   arrangeGrob(gg1, bottom = textGrob("Original", gp = gpar(fontsize = 14))),
@@ -518,29 +501,19 @@ ggsave("./export/Visualisation_soil_depth_uncertainty.pdf", grid, width = 20, he
 
 dev.off()
 
-# 06.4 Export final maps =======================================================
+# 06.3 Export final maps =======================================================
 
-# Replace missing values by zero as it occurs only in mountainous area
-uncertainty_raster[is.na(uncertainty_raster)] <- 0
-predicted_raster[is.na(predicted_raster)] <- 0
-
+# Replace infinite values of the uncertainty with NA
+raster$uncertainty[is.infinite(raster$uncertainty) & raster$uncertainty > 0] <- NA
 
 # For GeoTiff format
-soil_depth_map <- stack(predicted_raster, uncertainty_raster)
+soil_depth_map <- c(raster$median, raster$uncertainty)
 soil_depth_crop <- crop(soil_depth_map, survey)
-soil_depth_mask <- mask(soil_depth_crop, survey, inverse=FALSE, updatevalue=NA, updateNA=TRUE)
+soil_depth_mask <- mask(soil_depth_crop, survey)
 crs(soil_depth_mask) <- "EPSG:32638"
-x <- rast(soil_depth_mask)
-x_repro <- project(x, "EPSG:4326")
-names(x_repro) <- c("Prediction", "Uncertainty")
-terra::writeRaster(x_repro,"./export/Soil_depth_prediction_map.tif", overwrite=TRUE)
-
-# For netCDF format
-CDF_df <- lapply(1:nlayers(x_repro), function(i) {
-  rast(x_repro[[i]])
-})
-
-names(CDF_df) <- c("Prediction", "Uncertainty")
+soil_depth_repro <- project(soil_depth_mask, "EPSG:4326")
+names(soil_depth_repro) <- c("Prediction", "Uncertainty")
+writeRaster(soil_depth_repro,"./export/Soil_depth_prediction_map_final.tif", overwrite=TRUE)
 
 soil_to_netcdf <- function(soil_list, output_file, overwrite = FALSE) {
   # Check if file exists and handle overwrite
@@ -631,15 +604,26 @@ soil_to_netcdf <- function(soil_list, output_file, overwrite = FALSE) {
   nc_close(ncout)
 }
 
-soil_to_netcdf(CDF_df, "./export/Soil_depth_prediction_map.nc", overwrite = TRUE)
+soil_to_netcdf(soil_depth_repro, "./export/Soil_depth_prediction_map.nc", overwrite = TRUE)
 
 
+# 06.4 Final visualisations ====================================================
+# Change parameters for uncertainy and predictions
 
-# 06.5 Final visualisations ====================================================
-#Change parameters for uncertainy and predictions
-raster_resize <- aggregate(soil_depth_map, fact=5, fun=mean)
-rasterdf <- raster::as.data.frame(raster_resize, xy = TRUE)
+soil_depth_visual <- c(predicted_raster_resize$median, predicted_raster_resize$uncertainty)
+
+# Replace infinite values of the uncertainty with NA
+soil_depth_visual$uncertainty[is.infinite(soil_depth_visual$uncertainty) & soil_depth_visual$uncertainty > 0] <- 9999
+
+# Crop and mask
+soil_depth_crop <- crop(soil_depth_visual, survey)
+soil_depth_mask <- mask(soil_depth_visual, survey)
+crs(soil_depth_mask) <- "EPSG:32638"
+names(soil_depth_mask) <- c("Prediction", "Uncertainty")
+
+rasterdf <- as.data.frame(soil_depth_mask, xy = TRUE)
 rasterdf <- rasterdf[complete.cases(rasterdf),]
+rasterdf$Uncertainty[rasterdf$Uncertainty == 9999] <- NA
   
 bounds <- st_bbox(survey)
 xlim_new <- c(bounds["xmin"] - 3000, bounds["xmax"] + 3000)
@@ -663,7 +647,7 @@ gg1 <- ggplot() +
         bar_cols = c("white", "red") 
       ) +
       annotate("text", label = paste("Projection: WGS84 UTM 38N"), 
-               x = Inf, y = -Inf, hjust = 1.5, vjust = -3, size = 3, color = "black") +
+               x = Inf, y = -Inf, hjust = 1.05, vjust = -3, size = 3, color = "black") +
       annotation_north_arrow(location = "tr", which_north = "true", height = unit(1, "cm"), width = unit(0.75, "cm")) +
       theme_bw() +
       theme(
@@ -673,10 +657,52 @@ gg1 <- ggplot() +
         legend.position = "right")+
       coord_equal(ratio = 1) 
 
+gg1
+
+ggsave("./export/Visualisation_soil_depth_prediction_maps.pdf", gg1, width = 20, height = 10)
+ggsave("./export/Visualisation_soil_depth_prediction_maps.png", gg1, width = 20, height = 10)
+
+
+gg1 <- ggplot() +
+  geom_raster(data = rasterdf,
+              aes(x = x, y = y,fill = Uncertainty )) +
+  ggtitle("Soil depth uncertainty map") +
+  scale_fill_gradientn(colors = palette_blue,
+                       name = "Uncertainty",
+                       na.value = "lightgrey",
+                       guide = guide_colorbar(order = 1)) +
+  new_scale_fill() +
+  geom_tile(data = data.frame(x = -Inf, y = -Inf, category = "NA"),
+            aes(x = x, y = y, fill = category), width = 0, height = 0) +
+  
+  scale_fill_manual(name = "",values = c("NA" = "lightgrey"),guide = guide_legend(
+      override.aes = list(size = 3, shape = 22, fill = "lightgrey", color = "black"))) +
+  
+  annotation_scale(
+    location = "br",       
+    width_hint = 0.3,     
+    height = unit(0.3, "cm"),
+    line_col = "black",      
+    text_col = "black",    
+    bar_cols = c("white", "red") 
+  ) +
+  annotate("text", label = paste("Projection: WGS84 UTM 38N"), 
+           x = Inf, y = -Inf, hjust = 1.05, vjust = -3, size = 3, color = "black") +
+  annotation_north_arrow(location = "tr", which_north = "true", height = unit(1, "cm"), width = unit(0.75, "cm")) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    axis.text.y = element_text(angle = 90, vjust = 0.5, hjust = 0.5),
+    axis.title = element_blank(),       
+    legend.position = "right")+
+  coord_equal(ratio = 1) 
+
+gg1
+
 ggsave("./export/Visualisation_soil_depth_uncertainty_prediction_maps.pdf", gg1, width = 20, height = 10)
 ggsave("./export/Visualisation_soil_depth_uncertainty_prediction_maps.png", gg1, width = 20, height = 10)
 
-# 06.6 Simplified version for publication =======================================
+# 06.5 Simplified version for publication =======================================
   
 gg1 <- ggplot() +
       geom_raster(data = rasterdf, aes(x = x, y = y, fill = Prediction)) +
@@ -694,7 +720,17 @@ gg1 <- ggplot() +
 gg2 <- ggplot() +
   geom_raster(data = rasterdf, aes(x = x, y = y, fill = Uncertainty)) +
   ggtitle("Soil depth uncertainty prediction map") +  
-  scale_fill_gradientn(colors = palette_blue, name = "Uncertainty") + 
+  scale_fill_gradientn(colors = palette_blue, name = "Uncertainty", na.value = "lightgrey",
+                       guide = guide_colorbar(order = 1)) + 
+  
+  new_scale_fill() +
+  geom_tile(data = data.frame(x = -Inf, y = -Inf, category = "NA"),
+            aes(x = x, y = y, fill = category), width = 0, height = 0) +
+  
+  scale_fill_manual(name = "",values = c("NA" = "lightgrey"),guide = guide_legend(
+    override.aes = list(size = 3, shape = 22, fill = "lightgrey", color = "black"))) +
+  
+  
   theme_void() +  
   theme(
     legend.position = "right",
@@ -706,6 +742,8 @@ gg2 <- ggplot() +
 
 combined_plot <- plot_grid(gg1, gg2, ncol = 2) 
  
+plot(combined_plot)
+
 ggsave("./export/Publication_soil_depth_map.pdf", combined_plot, width = 20, height = 10)
 ggsave("./export/Publication_soil_depth_map.png", combined_plot, width = 20, height = 10)
 
