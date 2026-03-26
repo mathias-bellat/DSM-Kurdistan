@@ -88,7 +88,7 @@
 <link href="libs/Nt____-CSS-0.0.1/Nt_____home-button.css" rel="stylesheet" />
 <link href="libs/Ct____-CSS-0.0.1/Ct_____home-button.css" rel="stylesheet" />
 <link href="libs/OC____-CSS-0.0.1/OC_____home-button.css" rel="stylesheet" />
-<link href="libs/EC__µS_cm_-CSS-0.0.1/EC__µS_cm__home-button.css" rel="stylesheet" />
+<link href="libs/EC__µS_cm-1_-CSS-0.0.1/EC__µS_cm-1__home-button.css" rel="stylesheet" />
 <link href="libs/Sand____-CSS-0.0.1/Sand_____home-button.css" rel="stylesheet" />
 <link href="libs/Silt____-CSS-0.0.1/Silt_____home-button.css" rel="stylesheet" />
 <link href="libs/Clay____-CSS-0.0.1/Clay_____home-button.css" rel="stylesheet" />
@@ -5201,7 +5201,7 @@ loaded via a namespace (and not attached):
 <span id="cb55-127"><a href="digital-soil-mapping.html#cb55-127" tabindex="-1"></a>          <span class="at">Nt =</span> <span class="st">&quot;%&quot;</span>,</span>
 <span id="cb55-128"><a href="digital-soil-mapping.html#cb55-128" tabindex="-1"></a>          <span class="at">Ct =</span> <span class="st">&quot;%&quot;</span>,</span>
 <span id="cb55-129"><a href="digital-soil-mapping.html#cb55-129" tabindex="-1"></a>          <span class="at">OC =</span> <span class="st">&quot;%&quot;</span>,</span>
-<span id="cb55-130"><a href="digital-soil-mapping.html#cb55-130" tabindex="-1"></a>          <span class="at">EC =</span> <span class="st">&quot;μS/m&quot;</span>,</span>
+<span id="cb55-130"><a href="digital-soil-mapping.html#cb55-130" tabindex="-1"></a>          <span class="at">EC =</span> <span class="st">&quot;μS/cm-1&quot;</span>,</span>
 <span id="cb55-131"><a href="digital-soil-mapping.html#cb55-131" tabindex="-1"></a>          <span class="at">MWD =</span> <span class="st">&quot;mm&quot;</span>,</span>
 <span id="cb55-132"><a href="digital-soil-mapping.html#cb55-132" tabindex="-1"></a>          <span class="at">alr.Sand =</span> <span class="st">&quot;none&quot;</span>,</span>
 <span id="cb55-133"><a href="digital-soil-mapping.html#cb55-133" tabindex="-1"></a>          <span class="at">alr.Silt =</span> <span class="st">&quot;none&quot;</span>,</span>
@@ -5312,7 +5312,7 @@ loaded via a namespace (and not attached):
 <span id="cb55-238"><a href="digital-soil-mapping.html#cb55-238" tabindex="-1"></a>          <span class="at">Nt =</span> <span class="st">&quot;%&quot;</span>,</span>
 <span id="cb55-239"><a href="digital-soil-mapping.html#cb55-239" tabindex="-1"></a>          <span class="at">Ct =</span> <span class="st">&quot;%&quot;</span>,</span>
 <span id="cb55-240"><a href="digital-soil-mapping.html#cb55-240" tabindex="-1"></a>          <span class="at">OC =</span> <span class="st">&quot;%&quot;</span>,</span>
-<span id="cb55-241"><a href="digital-soil-mapping.html#cb55-241" tabindex="-1"></a>          <span class="at">EC =</span> <span class="st">&quot;μS/m&quot;</span>,</span>
+<span id="cb55-241"><a href="digital-soil-mapping.html#cb55-241" tabindex="-1"></a>          <span class="at">EC =</span> <span class="st">&quot;μS/cm-1&quot;</span>,</span>
 <span id="cb55-242"><a href="digital-soil-mapping.html#cb55-242" tabindex="-1"></a>          <span class="at">MWD =</span> <span class="st">&quot;mm&quot;</span>,</span>
 <span id="cb55-243"><a href="digital-soil-mapping.html#cb55-243" tabindex="-1"></a>          <span class="at">alr.Sand =</span> <span class="st">&quot;none&quot;</span>,</span>
 <span id="cb55-244"><a href="digital-soil-mapping.html#cb55-244" tabindex="-1"></a>          <span class="at">alr.Silt =</span> <span class="st">&quot;none&quot;</span></span>
@@ -5464,7 +5464,7 @@ loaded via a namespace (and not attached):
 <span id="cb57-5"><a href="digital-soil-mapping.html#cb57-5" tabindex="-1"></a>    rasterdf <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(raster_resize_masked, <span class="at">xy =</span> <span class="cn">TRUE</span>)</span>
 <span id="cb57-6"><a href="digital-soil-mapping.html#cb57-6" tabindex="-1"></a>    rasterdf <span class="ot">&lt;-</span> rasterdf[<span class="fu">complete.cases</span>(rasterdf),]</span>
 <span id="cb57-7"><a href="digital-soil-mapping.html#cb57-7" tabindex="-1"></a>    </span>
-<span id="cb57-8"><a href="digital-soil-mapping.html#cb57-8" tabindex="-1"></a>    legend <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;pH [KCl]&quot;</span>, <span class="st">&quot;CaCO3 [%]&quot;</span>, <span class="st">&quot;Nt [%]&quot;</span> , <span class="st">&quot;Ct [%]&quot;</span>, <span class="st">&quot;OC [%]&quot;</span>, <span class="st">&quot;EC [µS/cm]&quot;</span>, <span class="st">&quot;MWD [mm]&quot;</span>, <span class="st">&quot;alr.Sand&quot;</span>, <span class="st">&quot;alr.Silt&quot;</span>, <span class="st">&quot;Sand [%]&quot;</span>, <span class="st">&quot;Silt [%]&quot;</span>, <span class="st">&quot;Clay [%]&quot;</span>)</span>
+<span id="cb57-8"><a href="digital-soil-mapping.html#cb57-8" tabindex="-1"></a>    legend <span class="ot">&lt;-</span> <span class="fu">c</span>(<span class="st">&quot;pH [KCl]&quot;</span>, <span class="st">&quot;CaCO3 [%]&quot;</span>, <span class="st">&quot;Nt [%]&quot;</span> , <span class="st">&quot;Ct [%]&quot;</span>, <span class="st">&quot;OC [%]&quot;</span>, <span class="st">&quot;EC [µS/cm-1]&quot;</span>, <span class="st">&quot;MWD [mm]&quot;</span>, <span class="st">&quot;alr.Sand&quot;</span>, <span class="st">&quot;alr.Silt&quot;</span>, <span class="st">&quot;Sand [%]&quot;</span>, <span class="st">&quot;Silt [%]&quot;</span>, <span class="st">&quot;Clay [%]&quot;</span>)</span>
 <span id="cb57-9"><a href="digital-soil-mapping.html#cb57-9" tabindex="-1"></a>    </span>
 <span id="cb57-10"><a href="digital-soil-mapping.html#cb57-10" tabindex="-1"></a>    bounds <span class="ot">&lt;-</span> <span class="fu">st_bbox</span>(survey)</span>
 <span id="cb57-11"><a href="digital-soil-mapping.html#cb57-11" tabindex="-1"></a>    xlim_new <span class="ot">&lt;-</span> <span class="fu">c</span>(bounds[<span class="st">&quot;xmin&quot;</span>] <span class="sc">-</span> <span class="dv">3000</span>, bounds[<span class="st">&quot;xmax&quot;</span>] <span class="sc">+</span> <span class="dv">3000</span>)</span>
