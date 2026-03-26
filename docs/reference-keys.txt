@@ -15,13 +15,13 @@ ls-factor
 c-factor
 p-factor
 results
-annexes
 CLHS
 introduction-1
 purpose-1
 procedure-1
+input-data-1
 data-treatement
-soil-prediction-map-nafiseh-kakhani
+soil-prediction-map
 soil-erosion-based-on-rusle-model
 Slope
 geomorphological-map
