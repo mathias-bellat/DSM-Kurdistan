@@ -167,7 +167,7 @@ for (depth in increments) {
           Nt = "%",
           Ct = "%",
           OC = "%",
-          EC = "μS/m",
+          EC = "μS/cm-1",
           MWD = "mm",
           alr.Sand = "none",
           alr.Silt = "none",
@@ -278,7 +278,7 @@ for (depth in increments) {
           Nt = "%",
           Ct = "%",
           OC = "%",
-          EC = "μS/m",
+          EC = "μS/cm-1",
           MWD = "mm",
           alr.Sand = "none",
           alr.Silt = "none"
@@ -426,7 +426,7 @@ for (depth in increments) {
     rasterdf <- as.data.frame(raster_resize_masked, xy = TRUE)
     rasterdf <- rasterdf[complete.cases(rasterdf),]
     
-    legend <- c("pH [KCl]", "CaCO3 [%]", "Nt [%]" , "Ct [%]", "OC [%]", "EC [µS/cm]", "MWD [mm]", "alr.Sand", "alr.Silt", "Sand [%]", "Silt [%]", "Clay [%]")
+    legend <- c("pH [KCl]", "CaCO3 [%]", "Nt [%]" , "Ct [%]", "OC [%]", "EC [µS/cm-1]", "MWD [mm]", "alr.Sand", "alr.Silt", "Sand [%]", "Silt [%]", "Clay [%]")
     
     bounds <- st_bbox(survey)
     xlim_new <- c(bounds["xmin"] - 3000, bounds["xmax"] + 3000)
