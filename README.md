@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC_BY--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19236910.svg)](https://doi.org/10.5281/zenodo.19236910)
-[![DOI](https://fdat.uni-tuebingen.de/badge/DOI/10.57754/FDAT.5j1y9-hwb39.svg)](https://doi.org/10.57754/FDAT.5j1y9-hwb39)
+[![DOI](https://fdat.uni-tuebingen.de/badge/DOI/10.57754/FDAT.d5h1h-4x027.svg)](https://doi.org/10.57754/FDAT.d5h1h-4x027)
 
 This is a complete description of the workflow related to the paper *Soil information in Kurdistan region, Dohuk governorate (Iraq)*. 
 It contains all the pre-processing steps of the subsequent stages and the data required to understand the entire process.
